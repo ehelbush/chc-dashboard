@@ -308,16 +308,28 @@ function parseYahooChart(json, symbol) {
 }
 
 async function fetchYahooData(symbol, years) {
+  // Try Vercel serverless API first (works when deployed to Vercel)
+  try {
+    const apiUrl = `/api/yahoo?symbol=${encodeURIComponent(symbol)}&years=${years + 1}`;
+    const res = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.dates && data.dates.length > 0) {
+        return { dates: data.dates, closes: data.closes, volumes: data.volumes, name: data.name || symbol };
+      }
+      if (data.error) return { error: data.error };
+    }
+  } catch (e) { /* Fall through to CORS proxies */ }
+
+  // Fallback: CORS proxies (for GitHub Pages or local dev)
   const end = Math.floor(Date.now() / 1000);
   const start = end - years * 365 * 86400 - 30 * 86400;
   const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
 
-  // List of CORS proxies to try in order
   const proxies = [
     url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
     url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-    url => url,  // Direct (works in some browsers/contexts)
+    url => url,
   ];
 
   for (const makeProxy of proxies) {
@@ -332,7 +344,7 @@ async function fetchYahooData(symbol, years) {
     } catch (e) { continue; }
   }
 
-  return { error: `Could not fetch data for ${symbol}. This ticker is not in the pre-loaded dataset. Live data requires a CORS proxy to be available. Try one of the 25 pre-loaded tickers, or use the local Flask version for full Yahoo Finance access.` };
+  return { error: `Could not fetch live data for ${symbol}. Screener summary data may be available.` };
 }
 
 
