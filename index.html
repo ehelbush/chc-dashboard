@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CherryHead Capital — Trading Model Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117; --bg2: #1a1d29; --bg3: #242836; --border: #2e3348;
+      --text: #e4e6ed; --text2: #9498a8;
+      --green: #22c55e; --green-bg: rgba(34,197,94,0.12);
+      --red: #ef4444; --red-bg: rgba(239,68,68,0.12);
+      --blue: #3b82f6; --blue-bg: rgba(59,130,246,0.12);
+      --gold: #eab308;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+    .app { max-width:1400px; margin:0 auto; padding:20px; }
+    .header { display:flex; align-items:center; justify-content:space-between; padding:16px 0; border-bottom:1px solid var(--border); margin-bottom:24px; flex-wrap:wrap; gap:8px; }
+    .header h1 { font-size:22px; font-weight:700; letter-spacing:-0.5px; }
+    .header h1 span { color:var(--green); }
+    .header-right { display:flex; gap:12px; align-items:center; }
+    .badge { font-size:11px; padding:4px 10px; border-radius:20px; font-weight:600; }
+    .badge-green { background:var(--green-bg); color:var(--green); }
+    .badge-blue { background:var(--blue-bg); color:var(--blue); }
+    .card { background:var(--bg2); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+    .card-title { font-size:14px; font-weight:600; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:16px; }
+    .metrics-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:24px; }
+    .metric-card { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px; }
+    .metric-label { font-size:12px; color:var(--text2); margin-bottom:6px; }
+    .metric-value { font-size:24px; font-weight:700; }
+    .metric-sub { font-size:11px; color:var(--text2); margin-top:4px; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; padding:10px 12px; font-weight:600; color:var(--text2); border-bottom:2px solid var(--border); white-space:nowrap; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; user-select:none; }
+    th:hover { color:var(--text); }
+    th .sa { margin-left:4px; font-size:10px; }
+    td { padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
+    tr:hover td { background:rgba(255,255,255,0.03); }
+    .tc { font-weight:700; color:var(--blue); }
+    .buy { color:var(--green); font-weight:600; }
+    .sell { color:var(--red); font-weight:600; }
+    .pos { color:var(--green); }
+    .neg { color:var(--red); }
+    .sb { display:flex; align-items:center; gap:8px; }
+    .st { width:60px; height:6px; background:var(--bg3); border-radius:3px; position:relative; overflow:hidden; }
+    .sf { position:absolute; top:0; height:100%; border-radius:3px; }
+    .controls { display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+    .cg { display:flex; flex-direction:column; gap:4px; }
+    .cg label { font-size:11px; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; font-weight:600; }
+    input,select { background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:8px 12px; border-radius:8px; font-size:14px; outline:none; }
+    input:focus,select:focus { border-color:var(--blue); }
+    button { background:var(--blue); color:white; border:none; padding:9px 20px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:opacity 0.2s; }
+    button:hover { opacity:0.85; }
+    button:disabled { opacity:0.4; cursor:not-allowed; }
+    .btn-s { background:var(--bg3); border:1px solid var(--border); }
+    .dg { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    @media(max-width:900px){ .dg{grid-template-columns:1fr;} }
+    .ds { margin-bottom:16px; }
+    .ds h4 { font-size:12px; color:var(--text2); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px; }
+    .dr { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); font-size:13px; }
+    .dr:last-child { border-bottom:none; }
+    .loading { display:flex; align-items:center; justify-content:center; padding:60px; color:var(--text2); }
+    .spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin 0.8s linear infinite; margin-right:10px; display:inline-block; }
+    @keyframes spin { to{transform:rotate(360deg);} }
+    .rl { color:#22c55e; } .rm { color:#eab308; } .rh { color:#f97316; } .rc { color:#ef4444; }
+    .error-msg { color:var(--red); padding:20px; text-align:center; }
+    .cc { position:relative; }
+    .cc svg { display:block; }
+    .cl { display:flex; gap:20px; margin-top:12px; justify-content:center; }
+    .cli { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text2); }
+    .cld { width:10px; height:10px; border-radius:50%; }
+    .ctt { position:absolute; pointer-events:none; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:11px; white-space:nowrap; z-index:10; }
+    .footer { text-align:center; padding:24px; color:var(--text2); font-size:12px; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+// ── Seed data from spreadsheet ──────────────────────────────────────────────
+const SEED_DATA = [
+  {ticker:"GLDM",buy_sell_call:"Buy",call_strength:0.3694,last_yr_return:0.7324,av_yrly_return:0.2234,est_next_yr_return:-0.0198,current_loss:-0.0578,stat3_loss:-0.1402,recovery_period:1.50},
+  {ticker:"NVDA",buy_sell_call:"Buy",call_strength:0.0480,last_yr_return:0.2265,av_yrly_return:0.7700,est_next_yr_return:1.2739,current_loss:-0.2303,stat3_loss:-0.3700,recovery_period:1.62},
+  {ticker:"AVGO",buy_sell_call:"Buy",call_strength:0.0399,last_yr_return:0.5840,av_yrly_return:0.4409,est_next_yr_return:0.3003,current_loss:-0.2550,stat3_loss:-0.3139,recovery_period:2.06},
+  {ticker:"PLTR",buy_sell_call:"Sell",call_strength:-0.2394,last_yr_return:1.0724,av_yrly_return:0.6979,est_next_yr_return:0.0929,current_loss:-0.1395,stat3_loss:-0.4236,recovery_period:2.08},
+  {ticker:"ANET",buy_sell_call:"Buy",call_strength:0.1872,last_yr_return:0.5540,av_yrly_return:0.5539,est_next_yr_return:0.6522,current_loss:-0.1728,stat3_loss:-0.3681,recovery_period:2.08},
+  {ticker:"IWF",buy_sell_call:"Sell",call_strength:-0.4439,last_yr_return:0.2160,av_yrly_return:0.1674,est_next_yr_return:0.1604,current_loss:-0.0901,stat3_loss:-0.1493,recovery_period:2.09},
+  {ticker:"LLY",buy_sell_call:"Buy",call_strength:0.1558,last_yr_return:-0.0078,av_yrly_return:0.3425,est_next_yr_return:0.5086,current_loss:-0.1229,stat3_loss:-0.2736,recovery_period:2.17},
+  {ticker:"QQQ",buy_sell_call:"Buy",call_strength:0.0116,last_yr_return:0.1330,av_yrly_return:0.1343,est_next_yr_return:0.5086,current_loss:-0.0729,stat3_loss:-0.1305,recovery_period:2.22},
+  {ticker:"COST",buy_sell_call:"Buy",call_strength:0.2207,last_yr_return:0.1206,av_yrly_return:0.2355,est_next_yr_return:0.3766,current_loss:-0.0352,stat3_loss:-0.2128,recovery_period:2.26},
+  {ticker:"NRG",buy_sell_call:"Sell",call_strength:-0.5663,last_yr_return:0.8087,av_yrly_return:0.3332,est_next_yr_return:-0.0421,current_loss:-0.0702,stat3_loss:-0.3300,recovery_period:2.78},
+  {ticker:"SIVR",buy_sell_call:"Buy",call_strength:0.4808,last_yr_return:1.4769,av_yrly_return:0.2408,est_next_yr_return:-0.1658,current_loss:-0.2755,stat3_loss:-0.2756,recovery_period:2.99},
+  {ticker:"SPY",buy_sell_call:"Buy",call_strength:0.0962,last_yr_return:0.0479,av_yrly_return:0.0946,est_next_yr_return:0.1468,current_loss:-0.0446,stat3_loss:-0.1319,recovery_period:3.13},
+  {ticker:"XLE",buy_sell_call:"Buy",call_strength:0.6522,last_yr_return:0.3360,av_yrly_return:0.1701,est_next_yr_return:0.2154,current_loss:0.0,stat3_loss:-0.2330,recovery_period:3.38},
+  {ticker:"GOOG",buy_sell_call:"Buy",call_strength:0.0982,last_yr_return:0.6256,av_yrly_return:0.2298,est_next_yr_return:0.0511,current_loss:-0.1209,stat3_loss:-0.3144,recovery_period:3.65},
+  {ticker:"AAPL",buy_sell_call:"Buy",call_strength:0.1530,last_yr_return:0.1991,av_yrly_return:0.1465,est_next_yr_return:0.1013,current_loss:-0.1063,stat3_loss:-0.2363,recovery_period:3.95},
+  {ticker:"RCL",buy_sell_call:"Sell",call_strength:-0.3044,last_yr_return:0.3457,av_yrly_return:0.3029,est_next_yr_return:0.0420,current_loss:-0.2276,stat3_loss:-0.4135,recovery_period:4.03},
+  {ticker:"SHOP",buy_sell_call:"Sell",call_strength:-0.3891,last_yr_return:0.2127,av_yrly_return:0.1940,est_next_yr_return:0.1726,current_loss:-0.1647,stat3_loss:-0.3162,recovery_period:4.29},
+  {ticker:"PM",buy_sell_call:"Buy",call_strength:0.3306,last_yr_return:0.1745,av_yrly_return:0.1566,est_next_yr_return:0.1109,current_loss:-0.0938,stat3_loss:-0.2793,recovery_period:4.50},
+  {ticker:"PANW",buy_sell_call:"Sell",call_strength:-0.4778,last_yr_return:-0.1069,av_yrly_return:0.1830,est_next_yr_return:0.5080,current_loss:-0.2304,stat3_loss:-0.3266,recovery_period:4.71},
+  {ticker:"TPR",buy_sell_call:"Buy",call_strength:0.6731,last_yr_return:0.9901,av_yrly_return:0.2927,est_next_yr_return:-0.1815,current_loss:-0.1110,stat3_loss:-0.4665,recovery_period:4.89},
+  {ticker:"AMD",buy_sell_call:"Sell",call_strength:-0.2418,last_yr_return:0.6234,av_yrly_return:0.2984,est_next_yr_return:0.1915,current_loss:-0.2827,stat3_loss:-0.5349,recovery_period:5.86},
+  {ticker:"TSM",buy_sell_call:"Buy",call_strength:0.2397,last_yr_return:0.6410,av_yrly_return:0.2153,est_next_yr_return:-0.0985,current_loss:-0.1316,stat3_loss:-0.4409,recovery_period:5.96},
+  {ticker:"USO",buy_sell_call:"Buy",call_strength:1.0,last_yr_return:0.6262,av_yrly_return:0.2147,est_next_yr_return:0.2997,current_loss:0.0,stat3_loss:-0.4409,recovery_period:5.98},
+  {ticker:"MU",buy_sell_call:"Buy",call_strength:0.3304,last_yr_return:2.6503,av_yrly_return:0.3081,est_next_yr_return:-0.3461,current_loss:-0.0741,stat3_loss:-0.5973,recovery_period:6.77},
+  {ticker:"TSLA",buy_sell_call:"Sell",call_strength:-0.3177,last_yr_return:0.0423,av_yrly_return:0.1306,est_next_yr_return:0.4271,current_loss:-0.2691,stat3_loss:-0.6539,recovery_period:17.29},
+];
+
+const PORTFOLIO = {
+  current_drawdown:-0.1007, annualized_return:0.4318,
+  sp500_annualized:0.1095, excess_gain:2.94, as_of_date:"2026-03-12",
+};
+
+// ── CHC Trading Model (JavaScript port) ─────────────────────────────────────
+
+function computeCHCModel(dates, closes, volumes, opts) {
+  const {
+    volFlag = 2, priceFlag = 1, volPriceMix = 0.72,
+    buyThreshold = 0.0012, sellThreshold = -0.0012, evalYears = 5,
+  } = opts || {};
+
+  const n = closes.length;
+  if (n < 130) return { error: "Not enough data (need 130+ days)" };
+
+  // Trim to eval period
+  const evalDays = evalYears * 252;
+  let startTrim = 0;
+  if (n > evalDays) startTrim = n - evalDays;
+  const cl = closes.slice(startTrim);
+  const vo = volumes.slice(startTrim);
+  const dt = dates.slice(startTrim);
+  const N = cl.length;
+
+  const maWindows = { 0:1, 1:50, 2:100, 3:120 };
+  const volWindow = maWindows[volFlag] || 100;
+  const priceWindow = maWindows[priceFlag] || 50;
+  const lookback = Math.max(volWindow, priceWindow, 5);
+
+  // Volume up/down
+  const vud = new Float64Array(N);
+  vud[0] = vo[0];
+  for (let i = 1; i < N; i++) {
+    vud[i] = cl[i] >= cl[i-1] ? vo[i] : -vo[i];
+  }
+
+  // Volume ratio
+  const vr = new Float64Array(N).fill(1);
+  for (let i = volWindow; i < N; i++) {
+    let ss = 0, as = 0;
+    for (let j = i - volWindow + 1; j <= i; j++) { ss += vud[j]; as += vo[j]; }
+    if (as > 0) vr[i] = ss / as;
+  }
+
+  // Price MA
+  const pma = new Float64Array(N);
+  for (let i = 0; i < N; i++) pma[i] = cl[i];
+  for (let i = priceWindow; i < N; i++) {
+    let s = 0;
+    for (let j = i - priceWindow + 1; j <= i; j++) s += cl[j];
+    pma[i] = s / priceWindow;
+  }
+
+  // Price slope
+  const ps = new Float64Array(N);
+  for (let i = 4; i < N; i++) {
+    const mid = pma[i-2] || 1;
+    ps[i] = (pma[i] - pma[i-4]) / mid;
+  }
+
+  // Combined signal
+  const comb = new Float64Array(N);
+  for (let i = 0; i < N; i++) comb[i] = volPriceMix * vr[i] + (1 - volPriceMix) * ps[i];
+
+  // Generate signals & track balances
+  const signals = new Array(N).fill("Hold");
+  const bal = new Float64Array(N);
+  const shares = new Float64Array(N);
+  const bhBal = new Float64Array(N);
+  const initBal = 100000;
+  const si = lookback;
+
+  bal[si] = initBal;
+  shares[si] = initBal / cl[si];
+  signals[si] = "Buy";
+  const bhShares = cl[si] > 0 ? initBal / cl[si] : 0;
+
+  for (let i = si; i < N; i++) bhBal[i] = bhShares * cl[i];
+
+  for (let i = si + 1; i < N; i++) {
+    if (comb[i] >= buyThreshold) signals[i] = "Buy";
+    else if (comb[i] <= sellThreshold) signals[i] = "Sell";
+    else signals[i] = signals[i-1];
+
+    const traded = signals[i] !== signals[i-1];
+
+    if (signals[i] === "Buy") {
+      if (traded) {
+        shares[i] = cl[i] > 0 ? bal[i-1] / cl[i] : 0;
+        bal[i] = shares[i] * cl[i];
+      } else {
+        shares[i] = shares[i-1];
+        bal[i] = shares[i] * cl[i];
+      }
+    } else if (signals[i] === "Sell") {
+      if (traded) {
+        bal[i] = shares[i-1] * cl[i];
+        shares[i] = 0;
+      } else {
+        shares[i] = 0;
+        bal[i] = bal[i-1];
+      }
+    } else {
+      shares[i] = shares[i-1];
+      bal[i] = shares[i] > 0 ? shares[i] * cl[i] : bal[i-1];
+    }
+  }
+
+  // Metrics helper
+  function calcMetrics(b, start) {
+    const vals = [];
+    for (let i = start; i < b.length; i++) if (b[i] > 0) vals.push(b[i]);
+    if (vals.length < 2) return {};
+    let maxB = vals[0];
+    const dd = vals.map(v => { maxB = Math.max(maxB, v); return v / maxB - 1; });
+    const lastYrDays = Math.min(252, vals.length - 1);
+    const lastYrRet = vals[vals.length-1] / vals[vals.length - 1 - lastYrDays] - 1;
+    const yrsElapsed = vals.length / 252;
+    const avgYrRet = yrsElapsed > 0 && vals[0] > 0 ? Math.pow(vals[vals.length-1] / vals[0], 1/yrsElapsed) - 1 : 0;
+    const currentLoss = dd[dd.length-1];
+    const maxLoss = Math.min(...dd);
+    const avgLoss = dd.reduce((a,b)=>a+b,0) / dd.length;
+    const variance = dd.reduce((a,v)=>a+(v-avgLoss)**2,0) / dd.length;
+    const stdLoss = Math.sqrt(variance);
+    const stat3Loss = avgLoss - 3 * stdLoss;
+    let recovery = 0;
+    if (maxLoss < 0 && avgYrRet > 0) recovery = -2 * Math.log(1 + maxLoss) / Math.log(1 + avgYrRet);
+    return {
+      last_yr_return: +lastYrRet.toFixed(6), avg_yr_return: +avgYrRet.toFixed(6),
+      current_loss: +currentLoss.toFixed(6), max_loss: +maxLoss.toFixed(6),
+      avg_loss: +avgLoss.toFixed(6), stat3_loss: +stat3Loss.toFixed(6),
+      recovery_period: +recovery.toFixed(2),
+    };
+  }
+
+  const trading = calcMetrics(bal, si);
+  const buyHold = calcMetrics(bhBal, si);
+  const callStrength = comb[N-1] || 0;
+  const buySignal = signals[N-1] || "Hold";
+  const estNextYr = trading.last_yr_return != null ? (trading.last_yr_return + trading.avg_yr_return) / 2 : 0;
+
+  // Downsample chart
+  const step = Math.max(1, Math.floor((N - si) / 500));
+  const chartDates = [], chartTrading = [], chartBH = [];
+  for (let i = si; i < N; i += step) {
+    chartDates.push(dt[i]);
+    chartTrading.push(Math.round(bal[i]));
+    chartBH.push(Math.round(bhBal[i]));
+  }
+
+  return {
+    buy_sell_call: buySignal, call_strength: +callStrength.toFixed(6),
+    est_next_yr_return: +estNextYr.toFixed(6),
+    eval_period_start: dt[si] || "", eval_period_end: dt[N-1] || "",
+    eval_years: evalYears, trading, buy_hold: buyHold,
+    params: { vol_price_mix: volPriceMix, buy_threshold: buyThreshold, sell_threshold: sellThreshold },
+    chart: { dates: chartDates, trading_balance: chartTrading, bh_balance: chartBH },
+  };
+}
+
+// ── Yahoo Finance fetch via free proxy ──────────────────────────────────────
+
+async function fetchYahooData(symbol, years) {
+  const end = Math.floor(Date.now() / 1000);
+  const start = end - years * 365 * 86400 - 30 * 86400;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Yahoo Finance returned " + res.status);
+    const json = await res.json();
+    const result = json.chart.result[0];
+    const ts = result.timestamp;
+    const q = result.indicators.quote[0];
+    const adj = result.indicators.adjclose ? result.indicators.adjclose[0].adjclose : q.close;
+
+    const dates = [], closes = [], volumes = [];
+    for (let i = 0; i < ts.length; i++) {
+      const c = adj[i] || q.close[i];
+      const v = q.volume[i];
+      if (c != null && v != null) {
+        dates.push(new Date(ts[i] * 1000).toISOString().slice(0,10));
+        closes.push(c);
+        volumes.push(v);
+      }
+    }
+    return { dates, closes, volumes, name: result.meta.shortName || symbol };
+  } catch (e) {
+    // Try allorigins proxy as fallback
+    try {
+      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      const res2 = await fetch(proxyUrl);
+      if (!res2.ok) throw new Error("Proxy returned " + res2.status);
+      const json2 = await res2.json();
+      const result2 = json2.chart.result[0];
+      const ts2 = result2.timestamp;
+      const q2 = result2.indicators.quote[0];
+      const adj2 = result2.indicators.adjclose ? result2.indicators.adjclose[0].adjclose : q2.close;
+
+      const dates = [], closes = [], volumes = [];
+      for (let i = 0; i < ts2.length; i++) {
+        const c = adj2[i] || q2.close[i];
+        const v = q2.volume[i];
+        if (c != null && v != null) {
+          dates.push(new Date(ts2[i] * 1000).toISOString().slice(0,10));
+          closes.push(c);
+          volumes.push(v);
+        }
+      }
+      return { dates, closes, volumes, name: result2.meta.shortName || symbol };
+    } catch (e2) {
+      return { error: `Could not fetch data for ${symbol}: ${e2.message}` };
+    }
+  }
+}
+
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const pct = (v, dec=1) => v == null || isNaN(v) ? "\u2014" : (v*100).toFixed(dec)+"%";
+const pc = v => v >= 0 ? "pos" : "neg";
+const rc = v => v <= 2 ? "rl" : v <= 4 ? "rm" : v <= 6 ? "rh" : "rc";
+const dlr = v => v == null ? "\u2014" : "$"+v.toLocaleString("en-US",{maximumFractionDigits:0});
+
+
+// ── SVG Chart ───────────────────────────────────────────────────────────────
+function Chart({ data, width, height, lines, xKey }) {
+  const [tip, setTip] = useState(null);
+  const ref = useRef(null);
+  const p = {t:20,r:20,b:40,l:70};
+  const w = width-p.l-p.r, h2 = height-p.t-p.b;
+  if (!data || !data.length) return null;
+
+  let allV = [];
+  lines.forEach(l => data.forEach(d => { if(d[l.key]!=null) allV.push(d[l.key]); }));
+  const mn = Math.min(...allV), mx = Math.max(...allV), rng = mx-mn||1;
+  const xS = i => p.l+(i/(data.length-1))*w;
+  const yS = v => p.t+h2-((v-mn)/rng)*h2;
+
+  const paths = lines.map(l => {
+    let d="";
+    data.forEach((pt,i) => { const v=pt[l.key]; if(v!=null){const x=xS(i),y=yS(v); d+=(d===""?`M${x},${y}`:` L${x},${y}`);} });
+    return {...l,d};
+  });
+
+  const yT = []; for(let i=0;i<=5;i++){const v=mn+(rng/5)*i; yT.push({v,y:yS(v)});}
+  const xT = []; const xs=Math.max(1,Math.floor(data.length/6));
+  for(let i=0;i<data.length;i+=xs) xT.push({i,x:xS(i),label:data[i][xKey]?data[i][xKey].substring(0,7):""});
+
+  const onMM = e => {
+    const r2=ref.current.getBoundingClientRect();
+    const mx2=e.clientX-r2.left-p.l;
+    const idx=Math.round((mx2/w)*(data.length-1));
+    if(idx>=0&&idx<data.length) setTip({idx,x:e.clientX-r2.left,y:e.clientY-r2.top});
+  };
+
+  return (
+    <div className="cc" style={{width}}>
+      <svg ref={ref} width={width} height={height} onMouseMove={onMM} onMouseLeave={()=>setTip(null)}>
+        {yT.map((t,i)=><line key={i} x1={p.l} y1={t.y} x2={width-p.r} y2={t.y} stroke="#2e3348" strokeWidth="1" strokeDasharray="4,4"/>)}
+        {yT.map((t,i)=><text key={"yl"+i} x={p.l-8} y={t.y+4} textAnchor="end" fill="#9498a8" fontSize="11">{"$"+(t.v/1000).toFixed(0)+"k"}</text>)}
+        {xT.map((t,i)=><text key={"xl"+i} x={t.x} y={height-8} textAnchor="middle" fill="#9498a8" fontSize="10">{t.label}</text>)}
+        {paths.map((q,i)=><path key={i} d={q.d} fill="none" stroke={q.color} strokeWidth={q.width||2} opacity={q.opacity||1}/>)}
+        {tip&&<line x1={xS(tip.idx)} y1={p.t} x2={xS(tip.idx)} y2={p.t+h2} stroke="#9498a8" strokeWidth="1" strokeDasharray="3,3"/>}
+      </svg>
+      {tip&&tip.idx<data.length&&(
+        <div className="ctt" style={{left:Math.min(tip.x+12,width-160),top:20}}>
+          <div style={{color:"#9498a8",marginBottom:4}}>{data[tip.idx][xKey]}</div>
+          {lines.map((l,i)=><div key={i} style={{color:l.color}}>{l.label}: {dlr(data[tip.idx][l.key])}</div>)}
+        </div>
+      )}
+      <div className="cl">{lines.map((l,i)=><div key={i} className="cli"><div className="cld" style={{background:l.color}}/>{l.label}</div>)}</div>
+    </div>
+  );
+}
+
+
+// ── Components ──────────────────────────────────────────────────────────────
+
+function PortfolioMetrics({portfolio:p2}) {
+  return (
+    <div className="metrics-grid">
+      <div className="metric-card"><div className="metric-label">Annualized Return</div><div className="metric-value pos">{pct(p2.annualized_return)}</div><div className="metric-sub">S&P 500: {pct(p2.sp500_annualized)}</div></div>
+      <div className="metric-card"><div className="metric-label">Current Drawdown</div><div className="metric-value neg">{pct(p2.current_drawdown)}</div><div className="metric-sub">From all-time high</div></div>
+      <div className="metric-card"><div className="metric-label">Excess Return vs S&P</div><div className="metric-value" style={{color:"var(--gold)"}}>{p2.excess_gain!=null?p2.excess_gain.toFixed(1)+"x":"\u2014"}</div><div className="metric-sub">Multiple of S&P performance</div></div>
+      <div className="metric-card"><div className="metric-label">As of Date</div><div className="metric-value" style={{fontSize:18}}>{p2.as_of_date}</div><div className="metric-sub">Last model update</div></div>
+    </div>
+  );
+}
+
+function StrengthBar({value}) {
+  const av=Math.min(Math.abs(value),1), ip=value>=0, co=ip?"var(--green)":"var(--red)";
+  const lf=ip?"50%":(50-av*50)+"%", wd=(av*50)+"%";
+  return (
+    <div className="sb">
+      <div className="st"><div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:"var(--text2)",opacity:0.3}}/><div className="sf" style={{left:lf,width:wd,background:co}}/></div>
+      <span style={{fontSize:12,color:co,fontWeight:600,minWidth:40,textAlign:"right"}}>{value>=0?"+":""}{value.toFixed(2)}</span>
+    </div>
+  );
+}
+
+function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
+  const sorted = useMemo(() => {
+    const {key,dir}=sortCfg;
+    return [...tickers].sort((a,b)=>{
+      const av2=a[key]!=null?a[key]:0, bv=b[key]!=null?b[key]:0;
+      if(typeof av2==="string") return dir*av2.localeCompare(bv);
+      return dir*(av2-bv);
+    });
+  },[tickers,sortCfg]);
+
+  const SH = ({label,field}) => {
+    const active=sortCfg.key===field;
+    return <th onClick={()=>onSort(field)}>{label}<span className="sa">{active?(sortCfg.dir===1?"\u25B2":"\u25BC"):"\u21C5"}</span></th>;
+  };
+
+  return (
+    <div className="table-wrap"><table><thead><tr>
+      <SH label="Ticker" field="ticker"/><SH label="Signal" field="buy_sell_call"/>
+      <SH label="Strength" field="call_strength"/><SH label="Last Yr" field="last_yr_return"/>
+      <SH label="Avg Yr" field="av_yrly_return"/><SH label="Est Next Yr" field="est_next_yr_return"/>
+      <SH label="Current Loss" field="current_loss"/><SH label="Stat3 Loss" field="stat3_loss"/>
+      <SH label="Recovery (yrs)" field="recovery_period"/>
+    </tr></thead><tbody>
+      {sorted.map(t=>(
+        <tr key={t.ticker} onClick={()=>onSelect(t.ticker)} style={{cursor:"pointer"}}>
+          <td className="tc">{t.ticker}</td>
+          <td className={t.buy_sell_call==="Buy"?"buy":"sell"}>{t.buy_sell_call}</td>
+          <td><StrengthBar value={t.call_strength}/></td>
+          <td className={pc(t.last_yr_return)}>{pct(t.last_yr_return)}</td>
+          <td className={pc(t.av_yrly_return)}>{pct(t.av_yrly_return)}</td>
+          <td className={pc(t.est_next_yr_return)}>{pct(t.est_next_yr_return)}</td>
+          <td className={pc(t.current_loss)}>{pct(t.current_loss)}</td>
+          <td className="neg">{pct(t.stat3_loss)}</td>
+          <td className={rc(t.recovery_period)}>{t.recovery_period.toFixed(1)}</td>
+        </tr>
+      ))}
+    </tbody></table></div>
+  );
+}
+
+function TickerDetail({data,onBack}) {
+  if(!data) return null;
+  const {trading,buy_hold,chart,params}=data;
+  const cd = chart&&chart.dates ? chart.dates.map((d,i)=>({date:d,trading:chart.trading_balance[i],buyHold:chart.bh_balance[i]})) : [];
+
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20,flexWrap:"wrap"}}>
+        <button className="btn-s" onClick={onBack} style={{padding:"6px 14px",fontSize:13}}>{"\u2190"} Back</button>
+        <h2 style={{fontSize:20,fontWeight:700}}>{data.symbol}<span style={{color:"var(--text2)",fontWeight:400,fontSize:14,marginLeft:8}}>{data.name||""}</span></h2>
+        <span className="badge" style={{background:data.buy_sell_call==="Buy"?"var(--green-bg)":"var(--red-bg)",color:data.buy_sell_call==="Buy"?"var(--green)":"var(--red)"}}>{data.buy_sell_call} {"\u2014"} Strength: {data.call_strength!=null?data.call_strength.toFixed(3):""}</span>
+      </div>
+
+      {cd.length>0&&(
+        <div className="card">
+          <div className="card-title">Growth of $100,000 {"\u2014"} Trading vs Buy & Hold</div>
+          <Chart data={cd} width={Math.min(1340,window.innerWidth-80)} height={350} xKey="date"
+            lines={[{key:"trading",label:"With Trading",color:"#22c55e",width:2},{key:"buyHold",label:"Buy & Hold",color:"#3b82f6",width:2,opacity:0.7}]}/>
+        </div>
+      )}
+
+      <div className="dg">
+        <div className="card">
+          <div className="card-title">With Trading Strategy</div>
+          <div className="ds"><h4>Returns</h4>
+            <div className="dr"><span>Last Year</span><span className={pc(trading?trading.last_yr_return:0)}>{pct(trading?trading.last_yr_return:null)}</span></div>
+            <div className="dr"><span>Average Yearly</span><span className={pc(trading?trading.avg_yr_return:0)}>{pct(trading?trading.avg_yr_return:null)}</span></div>
+            <div className="dr"><span>Est Next Year</span><span className={pc(data.est_next_yr_return)}>{pct(data.est_next_yr_return)}</span></div>
+          </div>
+          <div className="ds"><h4>Losses & Recovery</h4>
+            <div className="dr"><span>Current Loss</span><span className="neg">{pct(trading?trading.current_loss:null)}</span></div>
+            <div className="dr"><span>Max Loss</span><span className="neg">{pct(trading?trading.max_loss:null)}</span></div>
+            <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(trading?trading.stat3_loss:null)}</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={rc(trading?trading.recovery_period:0)}>{trading?trading.recovery_period.toFixed(1):"\u2014"} years</span></div>
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-title">Buy & Hold Comparison</div>
+          <div className="ds"><h4>Returns</h4>
+            <div className="dr"><span>Last Year</span><span className={pc(buy_hold?buy_hold.last_yr_return:0)}>{pct(buy_hold?buy_hold.last_yr_return:null)}</span></div>
+            <div className="dr"><span>Average Yearly</span><span className={pc(buy_hold?buy_hold.avg_yr_return:0)}>{pct(buy_hold?buy_hold.avg_yr_return:null)}</span></div>
+          </div>
+          <div className="ds"><h4>Losses & Recovery</h4>
+            <div className="dr"><span>Current Loss</span><span className="neg">{pct(buy_hold?buy_hold.current_loss:null)}</span></div>
+            <div className="dr"><span>Max Loss</span><span className="neg">{pct(buy_hold?buy_hold.max_loss:null)}</span></div>
+            <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(buy_hold?buy_hold.stat3_loss:null)}</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={rc(buy_hold?buy_hold.recovery_period:0)}>{buy_hold?buy_hold.recovery_period.toFixed(1):"\u2014"} years</span></div>
+          </div>
+          <div className="ds"><h4>Model Parameters</h4>
+            <div className="dr"><span>Vol/Price Mix</span><span>{params?(params.vol_price_mix*100).toFixed(0):"72"}% vol / {params?((1-params.vol_price_mix)*100).toFixed(0):"28"}% price</span></div>
+            <div className="dr"><span>Buy Threshold</span><span>{params?params.buy_threshold:""}</span></div>
+            <div className="dr"><span>Sell Threshold</span><span>{params?params.sell_threshold:""}</span></div>
+            <div className="dr"><span>Eval Period</span><span>{data.eval_period_start} {"\u2192"} {data.eval_period_end}</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Main App ────────────────────────────────────────────────────────────────
+
+function App() {
+  const [view, setView] = useState("dashboard");
+  const [localData, setLocalData] = useState(null);
+  const [tickerDetail, setTickerDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [error, setError] = useState(null);
+  const [symbol, setSymbol] = useState("");
+  const [years, setYears] = useState(5);
+  const [mix, setMix] = useState(0.72);
+  const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
+
+  // Load local ticker data
+  useEffect(() => {
+    fetch("data/tickers.json")
+      .then(r => r.json())
+      .then(d => { setLocalData(d); setLoading(false); })
+      .catch(() => { setLoading(false); }); // Proceed without local data
+  }, []);
+
+  const handleSort = key => setSortCfg(prev => ({key, dir: prev.key===key ? -prev.dir : 1}));
+
+  const analyzeTicker = useCallback(async (sym, y, m) => {
+    const s = (sym || symbol).toUpperCase().trim();
+    if (!s) return;
+    setAnalyzing(true);
+    setError(null);
+    const yr = y != null ? y : years;
+    const mx = m != null ? m : mix;
+
+    try {
+      let dates, closes, volumes, name = s;
+
+      // Check local data first
+      if (localData && localData[s]) {
+        const ld = localData[s];
+        dates = ld.d; closes = ld.c; volumes = ld.v; name = ld.s || s;
+      } else {
+        // Fetch from Yahoo Finance
+        const yfData = await fetchYahooData(s, yr + 1);
+        if (yfData.error) { setError(yfData.error); setAnalyzing(false); return; }
+        dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; name = yfData.name;
+      }
+
+      const result = computeCHCModel(dates, closes, volumes, {
+        evalYears: yr, volPriceMix: mx,
+      });
+
+      if (result.error) { setError(result.error); setAnalyzing(false); return; }
+      result.symbol = s;
+      result.name = name;
+      setTickerDetail(result);
+      setView("detail");
+    } catch (e) {
+      setError(e.message);
+    }
+    setAnalyzing(false);
+  }, [symbol, years, mix, localData]);
+
+  const handleSelect = ticker => { setSymbol(ticker); analyzeTicker(ticker, years, mix); };
+  const handleKey = e => { if (e.key === "Enter") analyzeTicker(); };
+
+  if (loading) return <div className="app"><div className="loading"><div className="spinner"></div> Loading dashboard...</div></div>;
+
+  return (
+    <div className="app">
+      <div className="header">
+        <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.2.5</span></div>
+      </div>
+
+      <div className="card">
+        <div className="controls">
+          <div className="cg"><label>Ticker Symbol</label><input type="text" value={symbol} onChange={e=>setSymbol(e.target.value.toUpperCase())} onKeyDown={handleKey} placeholder="e.g. MSFT" style={{width:120}}/></div>
+          <div className="cg"><label>Evaluation Period</label>
+            <select value={years} onChange={e=>setYears(Number(e.target.value))}>
+              <option value={1}>1 Year</option><option value={2}>2 Years</option><option value={3}>3 Years</option>
+              <option value={5}>5 Years</option><option value={7}>7 Years</option><option value={10}>10 Years</option>
+            </select>
+          </div>
+          <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
+          <button onClick={()=>analyzeTicker()} disabled={analyzing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
+          {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>Dashboard</button>}
+        </div>
+        {error&&<div className="error-msg">{error}</div>}
+      </div>
+
+      {view==="dashboard"&&(
+        <div>
+          <PortfolioMetrics portfolio={PORTFOLIO}/>
+          <div className="card">
+            <div className="card-title">All Tickers {"\u2014"} Sorted by {sortCfg.key.replace(/_/g," ")}<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8}}>(click a row to analyze)</span></div>
+            <SummaryTable tickers={SEED_DATA} onSelect={handleSelect} sortCfg={sortCfg} onSort={handleSort}/>
+          </div>
+        </div>
+      )}
+
+      {view==="detail"&&(analyzing
+        ? <div className="loading"><div className="spinner"></div> Fetching data and running model...</div>
+        : <TickerDetail data={tickerDetail} onBack={()=>setView("dashboard")}/>
+      )}
+
+      <div className="footer">CherryHead Capital Trading Model Dashboard</div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
