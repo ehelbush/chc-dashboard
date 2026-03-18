@@ -472,7 +472,13 @@ function TickerDetail({data,onBack}) {
         <span className="badge" style={{background:data.buy_sell_call==="Buy"?"var(--green-bg)":"var(--red-bg)",color:data.buy_sell_call==="Buy"?"var(--green)":"var(--red)"}}>{data.buy_sell_call} {"\u2014"} Strength: {data.call_strength!=null?data.call_strength.toFixed(3):""}</span>
       </div>
 
-      {cd.length>0&&(
+      {data.summaryOnly&&(
+        <div className="card" style={{textAlign:"center",padding:20,color:"var(--text2)",fontSize:13}}>
+          Chart not available for screener data. Use the local Flask version for full chart details.
+        </div>
+      )}
+
+      {cd.length>0&&!data.summaryOnly&&(
         <div className="card">
           <div className="card-title">Growth of $100,000 {"\u2014"} Trading vs Buy & Hold</div>
           <Chart data={cd} width={Math.min(1340,window.innerWidth-80)} height={350} xKey="date"
@@ -619,6 +625,7 @@ function App() {
   const [page, setPage] = useState("portfolio");
   const [view, setView] = useState("dashboard");
   const [localData, setLocalData] = useState(null);
+  const [screenerData, setScreenerData] = useState(null);
   const [tickerDetail, setTickerDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -628,12 +635,16 @@ function App() {
   const [mix, setMix] = useState(0.72);
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
-  // Load local ticker data
+  // Load local ticker data + screener data
   useEffect(() => {
-    fetch("data/tickers.json")
-      .then(r => r.json())
-      .then(d => { setLocalData(d); setLoading(false); })
-      .catch(() => { setLoading(false); }); // Proceed without local data
+    Promise.all([
+      fetch("data/tickers.json").then(r => r.json()).catch(() => null),
+      fetch("data/market_screener.json").then(r => r.json()).catch(() => null),
+    ]).then(([td, sd]) => {
+      setLocalData(td);
+      setScreenerData(sd);
+      setLoading(false);
+    });
   }, []);
 
   const handleSort = key => setSortCfg(prev => ({key, dir: prev.key===key ? -prev.dir : 1}));
@@ -649,31 +660,63 @@ function App() {
 
     try {
       let dates, closes, volumes, name = s;
+      let hasFullData = false;
 
       // Check local data first
       if (localData && localData[s]) {
         const ld = localData[s];
         dates = ld.d; closes = ld.c; volumes = ld.v; name = ld.s || s;
+        hasFullData = true;
       } else {
-        // Fetch from Yahoo Finance
+        // Try Yahoo Finance
         const yfData = await fetchYahooData(s, yr + 1);
-        if (yfData.error) { setError(yfData.error); setAnalyzing(false); return; }
-        dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; name = yfData.name;
+        if (!yfData.error) {
+          dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; name = yfData.name;
+          hasFullData = true;
+        }
       }
 
-      const result = computeCHCModel(dates, closes, volumes, {
-        evalYears: yr, volPriceMix: mx,
-      });
-
-      if (result.error) { setError(result.error); setAnalyzing(false); return; }
-      result.symbol = s;
-      result.name = name;
-      setTickerDetail(result);
+      if (hasFullData) {
+        const result = computeCHCModel(dates, closes, volumes, {
+          evalYears: yr, volPriceMix: mx,
+        });
+        if (result.error) { setError(result.error); setAnalyzing(false); return; }
+        result.symbol = s;
+        result.name = name;
+        setTickerDetail(result);
+      } else {
+        // Fall back to screener summary data (no chart, but shows metrics)
+        const sr = screenerData && screenerData.results
+          ? screenerData.results.find(r => r.ticker === s) : null;
+        if (sr) {
+          setTickerDetail({
+            symbol: s, name: s,
+            buy_sell_call: sr.buy_sell_call,
+            call_strength: sr.call_strength,
+            est_next_yr_return: sr.est_next_yr_return,
+            eval_period_start: "", eval_period_end: screenerData.date || "",
+            trading: {
+              last_yr_return: sr.last_yr_return,
+              avg_yr_return: sr.av_yrly_return,
+              current_loss: sr.current_loss,
+              max_loss: null,
+              stat3_loss: sr.stat3_loss,
+              recovery_period: sr.recovery_period,
+            },
+            buy_hold: {},
+            chart: { dates: [], trading_balance: [], bh_balance: [] },
+            params: { vol_price_mix: 0.72, buy_threshold: 0.0012, sell_threshold: -0.0012 },
+            summaryOnly: true,
+          });
+        } else {
+          setError(`No data found for ${s}. It may not be a valid ticker symbol.`);
+        }
+      }
     } catch (e) {
       setError(e.message);
     }
     setAnalyzing(false);
-  }, [symbol, years, mix, localData]);
+  }, [symbol, years, mix, localData, screenerData]);
 
   const handleSelect = ticker => { setSymbol(ticker); analyzeTicker(ticker, years, mix); };
   const handleKey = e => { if (e.key === "Enter") analyzeTicker(); };
