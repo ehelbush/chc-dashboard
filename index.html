@@ -498,20 +498,20 @@ function TickerDetail({data,onBack}) {
             <div className="dr"><span>Current Loss</span><span className="neg">{pct(trading?trading.current_loss:null)}</span></div>
             <div className="dr"><span>Max Loss</span><span className="neg">{pct(trading?trading.max_loss:null)}</span></div>
             <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(trading?trading.stat3_loss:null)}</span></div>
-            <div className="dr"><span>Recovery Period</span><span className={rc(trading?trading.recovery_period:0)}>{trading?trading.recovery_period.toFixed(1):"\u2014"} years</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={rc(trading&&trading.recovery_period!=null?trading.recovery_period:0)}>{trading&&trading.recovery_period!=null?trading.recovery_period.toFixed(1):"\u2014"} years</span></div>
           </div>
         </div>
         <div className="card">
           <div className="card-title">Buy & Hold Comparison</div>
           <div className="ds"><h4>Returns</h4>
-            <div className="dr"><span>Last Year</span><span className={pc(buy_hold?buy_hold.last_yr_return:0)}>{pct(buy_hold?buy_hold.last_yr_return:null)}</span></div>
-            <div className="dr"><span>Average Yearly</span><span className={pc(buy_hold?buy_hold.avg_yr_return:0)}>{pct(buy_hold?buy_hold.avg_yr_return:null)}</span></div>
+            <div className="dr"><span>Last Year</span><span className={pc(buy_hold&&buy_hold.last_yr_return!=null?buy_hold.last_yr_return:0)}>{pct(buy_hold?buy_hold.last_yr_return:null)}</span></div>
+            <div className="dr"><span>Average Yearly</span><span className={pc(buy_hold&&buy_hold.avg_yr_return!=null?buy_hold.avg_yr_return:0)}>{pct(buy_hold?buy_hold.avg_yr_return:null)}</span></div>
           </div>
           <div className="ds"><h4>Losses & Recovery</h4>
             <div className="dr"><span>Current Loss</span><span className="neg">{pct(buy_hold?buy_hold.current_loss:null)}</span></div>
             <div className="dr"><span>Max Loss</span><span className="neg">{pct(buy_hold?buy_hold.max_loss:null)}</span></div>
             <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(buy_hold?buy_hold.stat3_loss:null)}</span></div>
-            <div className="dr"><span>Recovery Period</span><span className={rc(buy_hold?buy_hold.recovery_period:0)}>{buy_hold?buy_hold.recovery_period.toFixed(1):"\u2014"} years</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={rc(buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period:0)}>{buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period.toFixed(1):"\u2014"} years</span></div>
           </div>
           <div className="ds"><h4>Model Parameters</h4>
             <div className="dr"><span>Vol/Price Mix</span><span>{params?(params.vol_price_mix*100).toFixed(0):"72"}% vol / {params?((1-params.vol_price_mix)*100).toFixed(0):"28"}% price</span></div>
@@ -703,7 +703,7 @@ function App() {
               stat3_loss: sr.stat3_loss,
               recovery_period: sr.recovery_period,
             },
-            buy_hold: {},
+            buy_hold: { last_yr_return: null, avg_yr_return: null, current_loss: null, max_loss: null, stat3_loss: null, recovery_period: null },
             chart: { dates: [], trading_balance: [], bh_balance: [] },
             params: { vol_price_mix: 0.72, buy_threshold: 0.0012, sell_threshold: -0.0012 },
             summaryOnly: true,
