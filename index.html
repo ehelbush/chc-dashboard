@@ -272,60 +272,52 @@ function computeCHCModel(dates, closes, volumes, opts) {
   };
 }
 
-// ── Yahoo Finance fetch via free proxy ──────────────────────────────────────
+// ── Yahoo Finance fetch via CORS proxies ────────────────────────────────────
+
+function parseYahooChart(json, symbol) {
+  const result = json.chart.result[0];
+  const ts = result.timestamp;
+  const q = result.indicators.quote[0];
+  const adj = result.indicators.adjclose ? result.indicators.adjclose[0].adjclose : q.close;
+  const dates = [], closes = [], volumes = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = adj ? (adj[i] || q.close[i]) : q.close[i];
+    const v = q.volume[i];
+    if (c != null && v != null) {
+      dates.push(new Date(ts[i] * 1000).toISOString().slice(0,10));
+      closes.push(c);
+      volumes.push(v);
+    }
+  }
+  return { dates, closes, volumes, name: result.meta.shortName || result.meta.symbol || symbol };
+}
 
 async function fetchYahooData(symbol, years) {
   const end = Math.floor(Date.now() / 1000);
   const start = end - years * 365 * 86400 - 30 * 86400;
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
+  const yfUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1d`;
 
-  try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error("Yahoo Finance returned " + res.status);
-    const json = await res.json();
-    const result = json.chart.result[0];
-    const ts = result.timestamp;
-    const q = result.indicators.quote[0];
-    const adj = result.indicators.adjclose ? result.indicators.adjclose[0].adjclose : q.close;
+  // List of CORS proxies to try in order
+  const proxies = [
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+    url => url,  // Direct (works in some browsers/contexts)
+  ];
 
-    const dates = [], closes = [], volumes = [];
-    for (let i = 0; i < ts.length; i++) {
-      const c = adj[i] || q.close[i];
-      const v = q.volume[i];
-      if (c != null && v != null) {
-        dates.push(new Date(ts[i] * 1000).toISOString().slice(0,10));
-        closes.push(c);
-        volumes.push(v);
-      }
-    }
-    return { dates, closes, volumes, name: result.meta.shortName || symbol };
-  } catch (e) {
-    // Try allorigins proxy as fallback
+  for (const makeProxy of proxies) {
     try {
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-      const res2 = await fetch(proxyUrl);
-      if (!res2.ok) throw new Error("Proxy returned " + res2.status);
-      const json2 = await res2.json();
-      const result2 = json2.chart.result[0];
-      const ts2 = result2.timestamp;
-      const q2 = result2.indicators.quote[0];
-      const adj2 = result2.indicators.adjclose ? result2.indicators.adjclose[0].adjclose : q2.close;
-
-      const dates = [], closes = [], volumes = [];
-      for (let i = 0; i < ts2.length; i++) {
-        const c = adj2[i] || q2.close[i];
-        const v = q2.volume[i];
-        if (c != null && v != null) {
-          dates.push(new Date(ts2[i] * 1000).toISOString().slice(0,10));
-          closes.push(c);
-          volumes.push(v);
-        }
+      const fetchUrl = makeProxy(yfUrl);
+      const res = await fetch(fetchUrl, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) continue;
+      const json = await res.json();
+      if (json.chart && json.chart.result && json.chart.result[0]) {
+        return parseYahooChart(json, symbol);
       }
-      return { dates, closes, volumes, name: result2.meta.shortName || symbol };
-    } catch (e2) {
-      return { error: `Could not fetch data for ${symbol}: ${e2.message}` };
-    }
+    } catch (e) { continue; }
   }
+
+  return { error: `Could not fetch data for ${symbol}. This ticker is not in the pre-loaded dataset. Live data requires a CORS proxy to be available. Try one of the 25 pre-loaded tickers, or use the local Flask version for full Yahoo Finance access.` };
 }
 
 
