@@ -156,16 +156,22 @@ def compute_chc_model(dates, closes, volumes, eval_years=5,
     buy_signal = signals[N-1] if N > 0 else "Hold"
     est_next_yr = round((trading.get("last_yr_return", 0) + trading.get("avg_yr_return", 0)) / 2, 6)
 
+    # Sanitize NaN/Infinity (not valid in JSON)
+    def safe(v):
+        if v is None or (isinstance(v, float) and (math.isnan(v) or math.isinf(v))):
+            return 0
+        return v
+
     return {
         "ticker": None,  # set by caller
         "buy_sell_call": buy_signal,
-        "call_strength": call_strength,
-        "last_yr_return": trading.get("last_yr_return", 0),
-        "av_yrly_return": trading.get("avg_yr_return", 0),
-        "est_next_yr_return": est_next_yr,
-        "current_loss": trading.get("current_loss", 0),
-        "stat3_loss": trading.get("stat3_loss", 0),
-        "recovery_period": trading.get("recovery_period", 0),
+        "call_strength": safe(call_strength),
+        "last_yr_return": safe(trading.get("last_yr_return", 0)),
+        "av_yrly_return": safe(trading.get("avg_yr_return", 0)),
+        "est_next_yr_return": safe(est_next_yr),
+        "current_loss": safe(trading.get("current_loss", 0)),
+        "stat3_loss": safe(trading.get("stat3_loss", 0)),
+        "recovery_period": safe(trading.get("recovery_period", 0)),
     }
 
 
