@@ -75,6 +75,21 @@
     .cld { width:10px; height:10px; border-radius:50%; }
     .ctt { position:absolute; pointer-events:none; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:8px 12px; font-size:11px; white-space:nowrap; z-index:10; }
     .footer { text-align:center; padding:24px; color:var(--text2); font-size:12px; }
+    .nav-tabs { display:flex; gap:4px; margin-bottom:24px; }
+    .nav-tab { padding:10px 24px; border-radius:8px 8px 0 0; font-size:14px; font-weight:600; cursor:pointer; border:1px solid var(--border); border-bottom:none; background:var(--bg); color:var(--text2); transition:all 0.2s; }
+    .nav-tab:hover { color:var(--text); }
+    .nav-tab.active { background:var(--bg2); color:var(--text); border-color:var(--border); }
+    .screener-controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+    .search-input { width:240px; }
+    .filter-btn { background:var(--bg3); border:1px solid var(--border); color:var(--text2); padding:7px 16px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s; }
+    .filter-btn:hover { color:var(--text); border-color:var(--text2); }
+    .filter-btn.active { background:var(--blue-bg); color:var(--blue); border-color:var(--blue); }
+    .screener-stats { font-size:12px; color:var(--text2); margin-left:auto; }
+    .pagination { display:flex; gap:8px; align-items:center; justify-content:center; padding:16px 0; }
+    .page-btn { background:var(--bg3); border:1px solid var(--border); color:var(--text2); padding:6px 14px; border-radius:6px; font-size:13px; cursor:pointer; }
+    .page-btn:hover { color:var(--text); }
+    .page-btn.active { background:var(--blue-bg); color:var(--blue); border-color:var(--blue); }
+    .page-btn:disabled { opacity:0.3; cursor:not-allowed; }
   </style>
 </head>
 <body>
@@ -505,9 +520,103 @@ function TickerDetail({data,onBack}) {
 }
 
 
+// ── Market Screener ──────────────────────────────────────────────────────
+
+function MarketScreener({onSelect}) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
+  const [page, setPage] = useState(0);
+  const perPage = 50;
+
+  useEffect(() => {
+    fetch("data/market_screener.json")
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const handleSort = key => { setSortCfg(prev => ({key, dir: prev.key===key ? -prev.dir : 1})); setPage(0); };
+
+  const filtered = useMemo(() => {
+    if (!data || !data.results) return [];
+    let items = data.results;
+    if (search) {
+      const q = search.toUpperCase();
+      items = items.filter(t => t.ticker.includes(q));
+    }
+    if (filter === "buy") items = items.filter(t => t.buy_sell_call === "Buy");
+    if (filter === "sell") items = items.filter(t => t.buy_sell_call === "Sell");
+    const {key, dir} = sortCfg;
+    return [...items].sort((a, b) => {
+      const av = a[key] != null ? a[key] : 0, bv = b[key] != null ? b[key] : 0;
+      if (typeof av === "string") return dir * av.localeCompare(bv);
+      return dir * (av - bv);
+    });
+  }, [data, search, filter, sortCfg]);
+
+  const totalPages = Math.ceil(filtered.length / perPage);
+  const pageItems = filtered.slice(page * perPage, (page + 1) * perPage);
+
+  if (loading) return <div className="loading"><div className="spinner"></div> Loading market screener data...</div>;
+  if (!data || !data.results || data.results.length === 0) {
+    return (
+      <div className="card" style={{textAlign:"center",padding:40}}>
+        <div style={{fontSize:18,fontWeight:600,marginBottom:12}}>Market Screener Data Not Found</div>
+        <div style={{color:"var(--text2)",maxWidth:500,margin:"0 auto",lineHeight:1.6}}>
+          Run the batch script on your Mac to generate the data:<br/>
+          <code style={{background:"var(--bg3)",padding:"2px 8px",borderRadius:4,fontSize:13}}>python3 fetch_all_tickers.py</code><br/><br/>
+          Then push to GitHub:<br/>
+          <code style={{background:"var(--bg3)",padding:"2px 8px",borderRadius:4,fontSize:13}}>git add . && git commit -m "Add screener data" && git push</code>
+        </div>
+      </div>
+    );
+  }
+
+  const buyCount = data.results.filter(t => t.buy_sell_call === "Buy").length;
+  const sellCount = data.results.length - buyCount;
+
+  return (
+    <div>
+      <div className="metrics-grid">
+        <div className="metric-card"><div className="metric-label">Total Tickers</div><div className="metric-value" style={{color:"var(--blue)"}}>{data.total_tickers.toLocaleString()}</div><div className="metric-sub">NYSE + NASDAQ</div></div>
+        <div className="metric-card"><div className="metric-label">Buy Signals</div><div className="metric-value pos">{buyCount.toLocaleString()}</div><div className="metric-sub">{(buyCount/data.total_tickers*100).toFixed(0)}% of market</div></div>
+        <div className="metric-card"><div className="metric-label">Sell Signals</div><div className="metric-value neg">{sellCount.toLocaleString()}</div><div className="metric-sub">{(sellCount/data.total_tickers*100).toFixed(0)}% of market</div></div>
+        <div className="metric-card"><div className="metric-label">Data Date</div><div className="metric-value" style={{fontSize:18}}>{data.date}</div><div className="metric-sub">Last batch run</div></div>
+      </div>
+
+      <div className="card">
+        <div className="screener-controls">
+          <input className="search-input" type="text" placeholder="Search ticker..." value={search} onChange={e=>{setSearch(e.target.value.toUpperCase());setPage(0);}}/>
+          <button className={"filter-btn"+(filter==="all"?" active":"")} onClick={()=>{setFilter("all");setPage(0);}}>All</button>
+          <button className={"filter-btn"+(filter==="buy"?" active":"")} onClick={()=>{setFilter("buy");setPage(0);}}>Buy Only</button>
+          <button className={"filter-btn"+(filter==="sell"?" active":"")} onClick={()=>{setFilter("sell");setPage(0);}}>Sell Only</button>
+          <span className="screener-stats">Showing {filtered.length.toLocaleString()} tickers</span>
+        </div>
+
+        <SummaryTable tickers={pageItems} onSelect={onSelect} sortCfg={sortCfg} onSort={handleSort}/>
+
+        {totalPages>1&&(
+          <div className="pagination">
+            <button className="page-btn" disabled={page===0} onClick={()=>setPage(0)}>{"\u00AB"}</button>
+            <button className="page-btn" disabled={page===0} onClick={()=>setPage(p=>p-1)}>{"\u2039"} Prev</button>
+            <span style={{fontSize:13,color:"var(--text2)",padding:"0 8px"}}>Page {page+1} of {totalPages}</span>
+            <button className="page-btn" disabled={page>=totalPages-1} onClick={()=>setPage(p=>p+1)}>Next {"\u203A"}</button>
+            <button className="page-btn" disabled={page>=totalPages-1} onClick={()=>setPage(totalPages-1)}>{"\u00BB"}</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 // ── Main App ────────────────────────────────────────────────────────────────
 
 function App() {
+  const [page, setPage] = useState("portfolio");
   const [view, setView] = useState("dashboard");
   const [localData, setLocalData] = useState(null);
   const [tickerDetail, setTickerDetail] = useState(null);
@@ -534,6 +643,7 @@ function App() {
     if (!s) return;
     setAnalyzing(true);
     setError(null);
+    setView("detail");
     const yr = y != null ? y : years;
     const mx = m != null ? m : mix;
 
@@ -559,7 +669,6 @@ function App() {
       result.symbol = s;
       result.name = name;
       setTickerDetail(result);
-      setView("detail");
     } catch (e) {
       setError(e.message);
     }
@@ -578,6 +687,11 @@ function App() {
         <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.2.5</span></div>
       </div>
 
+      <div className="nav-tabs">
+        <div className={"nav-tab"+(page==="portfolio"&&view!=="detail"?" active":"")} onClick={()=>{setPage("portfolio");setView("dashboard");}}>Portfolio</div>
+        <div className={"nav-tab"+(page==="screener"&&view!=="detail"?" active":"")} onClick={()=>{setPage("screener");setView("dashboard");}}>Market Screener</div>
+      </div>
+
       <div className="card">
         <div className="controls">
           <div className="cg"><label>Ticker Symbol</label><input type="text" value={symbol} onChange={e=>setSymbol(e.target.value.toUpperCase())} onKeyDown={handleKey} placeholder="e.g. MSFT" style={{width:120}}/></div>
@@ -589,19 +703,23 @@ function App() {
           </div>
           <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
           <button onClick={()=>analyzeTicker()} disabled={analyzing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
-          {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>Dashboard</button>}
+          {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
         </div>
         {error&&<div className="error-msg">{error}</div>}
       </div>
 
-      {view==="dashboard"&&(
+      {view==="dashboard"&&page==="portfolio"&&(
         <div>
           <PortfolioMetrics portfolio={PORTFOLIO}/>
           <div className="card">
-            <div className="card-title">All Tickers {"\u2014"} Sorted by {sortCfg.key.replace(/_/g," ")}<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8}}>(click a row to analyze)</span></div>
+            <div className="card-title">Portfolio Tickers {"\u2014"} Sorted by {sortCfg.key.replace(/_/g," ")}<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8}}>(click a row to analyze)</span></div>
             <SummaryTable tickers={SEED_DATA} onSelect={handleSelect} sortCfg={sortCfg} onSort={handleSort}/>
           </div>
         </div>
+      )}
+
+      {view==="dashboard"&&page==="screener"&&(
+        <MarketScreener onSelect={handleSelect}/>
       )}
 
       {view==="detail"&&(analyzing
