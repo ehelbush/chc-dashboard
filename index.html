@@ -674,18 +674,16 @@ function App() {
       let dates, closes, volumes, name = s;
       let hasFullData = false;
 
-      // Check local data first
-      if (localData && localData[s]) {
+      // Try live Yahoo Finance data first (via Vercel API)
+      const yfData = await fetchYahooData(s, yr + 1);
+      if (!yfData.error) {
+        dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; name = yfData.name;
+        hasFullData = true;
+      } else if (localData && localData[s]) {
+        // Fall back to pre-loaded local data
         const ld = localData[s];
         dates = ld.d; closes = ld.c; volumes = ld.v; name = ld.s || s;
         hasFullData = true;
-      } else {
-        // Try Yahoo Finance
-        const yfData = await fetchYahooData(s, yr + 1);
-        if (!yfData.error) {
-          dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; name = yfData.name;
-          hasFullData = true;
-        }
       }
 
       if (hasFullData) {
