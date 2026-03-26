@@ -29,6 +29,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 TOKEN_FILE = SCRIPT_DIR / "schwab_tokens.json"
 CACHE_FILE = SCRIPT_DIR / "data" / "schwab_cache.json"
+HISTORY_FILE = SCRIPT_DIR / "data" / "portfolio_history.json"
 ENV_FILE = SCRIPT_DIR / ".env"
 
 # Schwab API base URLs
@@ -279,6 +280,74 @@ def compute_sector_breakdown(positions):
     return {"sectors": result, "total_value": round(total_value, 2)}
 
 
+def append_history(cache):
+    """Append a daily snapshot to portfolio_history.json for performance tracking."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Load existing history
+    history = []
+    if HISTORY_FILE.exists():
+        try:
+            history = json.loads(HISTORY_FILE.read_text())
+        except Exception:
+            history = []
+
+    summary = cache.get("portfolio_summary", {})
+    total_value = summary.get("total_value", 0)
+    total_equity = summary.get("total_equity", 0)
+    total_cash = summary.get("total_cash", 0)
+
+    # Estimate net flows: value change minus market-driven gain
+    # Use total_value (not total_equity) since backfilled data may have inaccurate equity
+    day_gain = sum(a.get("day_gain", 0) for a in cache.get("accounts", []))
+    net_flows = 0
+    if history:
+        prev = history[-1]
+        prev_value = prev.get("total_value", prev.get("total_equity", total_value))
+        value_change = total_value - prev_value
+        net_flows = round(value_change - day_gain, 2)
+
+    # Build lightweight holdings snapshot
+    holdings = []
+    for acct in cache.get("accounts", []):
+        for h in acct.get("holdings", []):
+            holdings.append({
+                "symbol": h["symbol"],
+                "market_value": h["market_value"],
+                "weight": round(h["market_value"] / total_value, 4) if total_value > 0 else 0,
+                "quantity": h["quantity"],
+            })
+
+    # Benchmark prices
+    benchmarks = cache.get("benchmarks", {})
+    benchmark_prices = {sym: bm.get("current_price", 0) for sym, bm in benchmarks.items()}
+
+    snapshot = {
+        "date": today,
+        "total_value": round(total_value, 2),
+        "total_equity": round(total_equity, 2),
+        "cash_balance": round(total_cash, 2),
+        "net_flows": net_flows,
+        "day_gain": round(day_gain, 2),
+        "positions_count": summary.get("positions_count", 0),
+        "holdings": holdings,
+        "benchmark_prices": benchmark_prices,
+    }
+
+    # Update existing entry for today, or append new one
+    updated = False
+    for i, entry in enumerate(history):
+        if entry.get("date") == today:
+            history[i] = snapshot
+            updated = True
+            break
+    if not updated:
+        history.append(snapshot)
+
+    HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    print(f"  Portfolio history {'updated' if updated else 'appended'} for {today} ({len(history)} total entries)")
+
+
 def sync_all(app_key, app_secret):
     """Main sync function — fetches everything and caches it."""
     tokens = load_tokens()
@@ -379,15 +448,37 @@ def sync_all(app_key, app_secret):
         if transactions:
             recent_trades = []
             for txn in transactions[:50]:  # Keep last 50
+                # Find the equity/ETF transfer item (skip currency/fee items)
+                equity_item = None
+                for item in txn.get("transferItems", []):
+                    inst = item.get("instrument", {})
+                    if inst.get("assetType") not in ("CURRENCY", "CASH_EQUIVALENT") and not item.get("feeType"):
+                        equity_item = item
+                        break
+
+                symbol = ""
+                quantity = 0
+                action = ""
+                if equity_item:
+                    symbol = equity_item.get("instrument", {}).get("symbol", "")
+                    quantity = equity_item.get("amount", 0)
+                    effect = equity_item.get("positionEffect", "")
+                    action = "BUY" if effect == "OPENING" else "SELL" if effect == "CLOSING" else txn.get("type", "")
+                else:
+                    # Non-trade transaction (dividend, transfer, etc.)
+                    symbol = txn.get("description", "").split("~")[-1].strip() if "~" in txn.get("description", "") else ""
+                    action = txn.get("type", "")
+
+                if not symbol and txn.get("type") not in ("TRADE",):
+                    continue  # Skip non-informative entries
+
                 trade = {
-                    "date": txn.get("transactionDate", ""),
-                    "type": txn.get("type", ""),
+                    "date": txn.get("tradeDate", txn.get("time", "")),
+                    "type": action,
                     "description": txn.get("description", ""),
-                    "symbol": txn.get("transferItems", [{}])[0].get("instrument", {}).get("symbol", "")
-                        if txn.get("transferItems") else "",
+                    "symbol": symbol,
                     "amount": round(txn.get("netAmount", 0), 2),
-                    "quantity": txn.get("transferItems", [{}])[0].get("amount", 0)
-                        if txn.get("transferItems") else 0,
+                    "quantity": abs(quantity),
                 }
                 recent_trades.append(trade)
             account_entry["recent_trades"] = recent_trades
@@ -447,6 +538,9 @@ def sync_all(app_key, app_secret):
 
     # Save cache
     save_cache(cache)
+
+    # Append to portfolio history for performance tracking
+    append_history(cache)
 
     print(f"\n  Sync complete!")
     print(f"  {len(cache['accounts'])} account(s), {len(all_holdings)} positions")

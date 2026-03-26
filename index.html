@@ -638,6 +638,8 @@ function SchwabAccount({onAnalyzeTicker}) {
   const [loading, setLoading] = useState(true);
   const [holdSort, setHoldSort] = useState({key:"market_value",dir:-1});
   const [benchView, setBenchView] = useState("returns"); // returns | drawdown
+  const [historyData, setHistoryData] = useState(null);
+  const [historyRange, setHistoryRange] = useState("ALL");
 
   useEffect(() => {
     fetch("/api/schwab").then(r => r.json()).then(d => {
@@ -649,6 +651,14 @@ function SchwabAccount({onAnalyzeTicker}) {
         setSchwabData(d);
         setLoading(false);
       }).catch(() => setLoading(false));
+    });
+    // Fetch portfolio history
+    fetch("/api/portfolio_history").then(r => r.json()).then(d => {
+      if (Array.isArray(d) && d.length > 0) setHistoryData(d);
+    }).catch(() => {
+      fetch("data/portfolio_history.json").then(r => r.json()).then(d => {
+        if (Array.isArray(d) && d.length > 0) setHistoryData(d);
+      }).catch(() => {});
     });
   }, []);
 
@@ -765,6 +775,314 @@ function SchwabAccount({onAnalyzeTicker}) {
           <div className="metric-sub">{schwabData.accounts.map(a => a.account_type).join(", ")}</div>
         </div>
       </div>
+
+      {/* Performance history chart */}
+      {historyData && historyData.length >= 2 && (() => {
+        // Filter by selected time range
+        const now = new Date();
+        const rangeStart = {
+          "1M": new Date(now.getFullYear(), now.getMonth()-1, now.getDate()),
+          "3M": new Date(now.getFullYear(), now.getMonth()-3, now.getDate()),
+          "6M": new Date(now.getFullYear(), now.getMonth()-6, now.getDate()),
+          "YTD": new Date(now.getFullYear(), 0, 1),
+          "ALL": new Date(2000, 0, 1),
+        }[historyRange];
+        const rangeStr = rangeStart.toISOString().slice(0,10);
+        const filtered = historyData.filter(d => d.date >= rangeStr);
+        if (filtered.length < 2) return null;
+
+        // Compute normalized performance (growth of $100k, adjusted for cash flows)
+        // Uses total_value (Schwab's actual account balance) for accurate TWR
+        // Filter to only trading days (days with benchmark data) to avoid weekend flat spots
+        const tradingDays = filtered.filter(d => d.benchmark_prices?.SPY > 0);
+        const source = tradingDays.length >= 2 ? tradingDays : filtered;
+        const chartData = [];
+        let portfolioIndex = 100000;
+        let lastSpyPrice = 0;
+        // Find first valid SPY price
+        for (const d of source) { if (d.benchmark_prices?.SPY > 0) { lastSpyPrice = d.benchmark_prices.SPY; break; } }
+        const spyStart = lastSpyPrice || 1;
+
+        for (let i = 0; i < source.length; i++) {
+          const d = source[i];
+          if (i > 0) {
+            const prev = source[i-1];
+            const prevValue = prev.total_value || prev.total_equity || 1;
+            const currValue = d.total_value || d.total_equity || 0;
+            const flows = d.net_flows || 0;
+            const dailyReturn = (currValue - prevValue - flows) / prevValue;
+            portfolioIndex *= (1 + dailyReturn);
+          }
+          // Carry forward last known SPY price
+          if (d.benchmark_prices?.SPY > 0) lastSpyPrice = d.benchmark_prices.SPY;
+          const spyNorm = (lastSpyPrice / spyStart) * 100000;
+
+          chartData.push({
+            date: d.date,
+            portfolio: Math.round(portfolioIndex),
+            spy: Math.round(spyNorm),
+          });
+        }
+
+        const lastPortfolio = chartData[chartData.length-1].portfolio;
+        const lastSpy = chartData[chartData.length-1].spy;
+        const portfolioReturn = ((lastPortfolio / 100000) - 1) * 100;
+        const spyReturn = ((lastSpy / 100000) - 1) * 100;
+
+        return (
+          <div className="card">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+              <div>
+                <div className="card-title" style={{margin:0}}>Portfolio Performance</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Growth of $100k — normalized for deposits & withdrawals</div>
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                {["1M","3M","6M","YTD","ALL"].map(r => (
+                  <button key={r} className={"filter-btn"+(historyRange===r?" active":"")} onClick={()=>setHistoryRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
+                ))}
+              </div>
+            </div>
+            <Chart
+              data={chartData}
+              width={900}
+              height={320}
+              xKey="date"
+              lines={[
+                {key:"portfolio", color:"#22c55e", label:`Portfolio (${portfolioReturn>=0?"+":""}${portfolioReturn.toFixed(1)}%)`, width:2.5},
+                {key:"spy", color:"#3b82f6", label:`S&P 500 (${spyReturn>=0?"+":""}${spyReturn.toFixed(1)}%)`, width:1.5, opacity:0.7},
+              ]}
+            />
+          </div>
+        );
+      })()}
+
+      {/* Account Balance History */}
+      {historyData && historyData.length >= 2 && (() => {
+        // Filter to trading days only (avoid weekend duplicates)
+        const allDays = historyData.filter(d => d.benchmark_prices?.SPY > 0 || d.total_value > 0);
+        if (allDays.length < 2) return null;
+
+        const balanceData = allDays.map(d => ({
+          date: d.date,
+          balance: Math.round(d.total_value),
+        }));
+
+        return (
+          <div className="card">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div>
+                <div className="card-title" style={{margin:0}}>Account Balance</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Total account value including cash — from Schwab</div>
+              </div>
+            </div>
+            <Chart
+              data={balanceData}
+              width={900}
+              height={280}
+              xKey="date"
+              lines={[
+                {key:"balance", color:"#3b82f6", label:`Current: $${(balanceData[balanceData.length-1].balance/1000).toFixed(0)}k`, width:2},
+              ]}
+            />
+          </div>
+        );
+      })()}
+
+      {/* Drawdown Chart */}
+      {historyData && historyData.length >= 2 && (() => {
+        // Compute drawdown from peak using TWR index
+        const tradingDays = historyData.filter(d => d.benchmark_prices?.SPY > 0);
+        const source = tradingDays.length >= 2 ? tradingDays : historyData;
+        if (source.length < 2) return null;
+
+        let index = 100000;
+        let peak = 100000;
+        let spyIndex = 100000;
+        let spyPeak = 100000;
+        let lastSpy = source[0].benchmark_prices?.SPY || 1;
+        const spyStart = lastSpy;
+        const ddData = [];
+
+        for (let i = 0; i < source.length; i++) {
+          const d = source[i];
+          if (i > 0) {
+            const prev = source[i-1];
+            const prevVal = prev.total_value || prev.total_equity || 1;
+            const currVal = d.total_value || d.total_equity || 0;
+            const flows = d.net_flows || 0;
+            index *= (1 + (currVal - prevVal - flows) / prevVal);
+          }
+          if (d.benchmark_prices?.SPY > 0) lastSpy = d.benchmark_prices.SPY;
+          spyIndex = (lastSpy / spyStart) * 100000;
+
+          peak = Math.max(peak, index);
+          spyPeak = Math.max(spyPeak, spyIndex);
+          const dd = ((index / peak) - 1) * 100;
+          const spyDd = ((spyIndex / spyPeak) - 1) * 100;
+
+          ddData.push({ date: d.date, portfolio: Math.round(dd * 100) / 100, spy: Math.round(spyDd * 100) / 100 });
+        }
+
+        const maxDD = Math.min(...ddData.map(d => d.portfolio));
+        const maxSpyDD = Math.min(...ddData.map(d => d.spy));
+
+        return (
+          <div className="card">
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div>
+                <div className="card-title" style={{margin:0}}>Drawdown</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Peak-to-trough decline — lower is worse</div>
+              </div>
+              <div style={{display:"flex",gap:16,fontSize:12}}>
+                <span style={{color:"var(--red)"}}>Max DD: {maxDD.toFixed(1)}%</span>
+                <span style={{color:"var(--blue)"}}>SPY Max DD: {maxSpyDD.toFixed(1)}%</span>
+              </div>
+            </div>
+            {(() => {
+              const w2 = 900, h3 = 220;
+              const pad = {t:10,r:20,b:40,l:60};
+              const cw = w2-pad.l-pad.r, ch = h3-pad.t-pad.b;
+              const mn = Math.min(...ddData.map(d=>Math.min(d.portfolio,d.spy)), 0);
+              const mx = 0;
+              const rng = mx-mn || 1;
+              const xS = i => pad.l+(i/(ddData.length-1))*cw;
+              const yS = v => pad.t+ch-((v-mn)/rng)*ch;
+
+              // Build area path for portfolio drawdown
+              let areaPath = `M${xS(0)},${yS(0)}`;
+              let linePath = `M${xS(0)},${yS(ddData[0].portfolio)}`;
+              let spyPath = `M${xS(0)},${yS(ddData[0].spy)}`;
+              for (let i = 0; i < ddData.length; i++) {
+                linePath += ` L${xS(i)},${yS(ddData[i].portfolio)}`;
+                areaPath += ` L${xS(i)},${yS(ddData[i].portfolio)}`;
+                spyPath += ` L${xS(i)},${yS(ddData[i].spy)}`;
+              }
+              areaPath += ` L${xS(ddData.length-1)},${yS(0)} Z`;
+
+              const yTicks = [];
+              const step = Math.ceil(Math.abs(mn) / 4);
+              for (let v = 0; v >= mn; v -= step) yTicks.push({v, y: yS(v)});
+
+              const xTicks = [];
+              const xs = Math.max(1, Math.floor(ddData.length / 6));
+              for (let i = 0; i < ddData.length; i += xs) xTicks.push({i, x: xS(i), label: ddData[i].date.substring(0,7)});
+
+              return (
+                <svg width={w2} height={h3}>
+                  {yTicks.map((t,i) => <line key={i} x1={pad.l} y1={t.y} x2={w2-pad.r} y2={t.y} stroke="#2e3348" strokeWidth="1" strokeDasharray="4,4"/>)}
+                  {yTicks.map((t,i) => <text key={"y"+i} x={pad.l-8} y={t.y+4} textAnchor="end" fill="#9498a8" fontSize="11">{t.v}%</text>)}
+                  {xTicks.map((t,i) => <text key={"x"+i} x={t.x} y={h3-8} textAnchor="middle" fill="#9498a8" fontSize="10">{t.label}</text>)}
+                  <path d={areaPath} fill="rgba(239,68,68,0.15)" />
+                  <path d={linePath} fill="none" stroke="#ef4444" strokeWidth="1.5" />
+                  <path d={spyPath} fill="none" stroke="#3b82f6" strokeWidth="1" opacity="0.6" strokeDasharray="4,3" />
+                  <line x1={pad.l} y1={yS(0)} x2={w2-pad.r} y2={yS(0)} stroke="#4ade80" strokeWidth="1" opacity="0.3"/>
+                </svg>
+              );
+            })()}
+            <div className="cl">
+              <div className="cli"><div className="cld" style={{background:"#ef4444"}}/>{`Portfolio (max ${maxDD.toFixed(1)}%)`}</div>
+              <div className="cli"><div className="cld" style={{background:"#3b82f6"}}/>{`S&P 500 (max ${maxSpyDD.toFixed(1)}%)`}</div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Monthly Returns Heatmap */}
+      {historyData && historyData.length >= 30 && (() => {
+        // Compute monthly returns using TWR
+        const tradingDays = historyData.filter(d => d.total_value > 0);
+        if (tradingDays.length < 2) return null;
+
+        // Group by month and compute returns
+        const monthlyValues = {};
+        for (const d of tradingDays) {
+          const ym = d.date.substring(0,7); // YYYY-MM
+          if (!monthlyValues[ym]) monthlyValues[ym] = { first: d, last: d, flows: 0 };
+          monthlyValues[ym].last = d;
+          monthlyValues[ym].flows += (d.net_flows || 0);
+        }
+
+        const months = Object.keys(monthlyValues).sort();
+        const monthlyReturns = [];
+        for (let i = 1; i < months.length; i++) {
+          const prev = monthlyValues[months[i-1]];
+          const curr = monthlyValues[months[i]];
+          const startVal = prev.last.total_value || 1;
+          const endVal = curr.last.total_value || 0;
+          const flows = curr.flows || 0;
+          const ret = (endVal - startVal - flows) / startVal;
+          const [y, m] = months[i].split("-");
+          monthlyReturns.push({ year: y, month: parseInt(m), return: ret, label: months[i] });
+        }
+
+        const years = [...new Set(monthlyReturns.map(r => r.year))].sort();
+        const monthNames = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        const retLookup = {};
+        monthlyReturns.forEach(r => { retLookup[`${r.year}-${r.month}`] = r.return; });
+
+        const getColor = (v) => {
+          if (v == null) return "transparent";
+          if (v > 0.08) return "rgba(34,197,94,0.8)";
+          if (v > 0.04) return "rgba(34,197,94,0.55)";
+          if (v > 0.01) return "rgba(34,197,94,0.3)";
+          if (v > -0.01) return "rgba(148,152,168,0.2)";
+          if (v > -0.04) return "rgba(239,68,68,0.3)";
+          if (v > -0.08) return "rgba(239,68,68,0.55)";
+          return "rgba(239,68,68,0.8)";
+        };
+
+        // Compute YTD for each year
+        const ytdByYear = {};
+        years.forEach(y => {
+          const rets = monthlyReturns.filter(r => r.year === y);
+          const cumReturn = rets.reduce((acc, r) => acc * (1 + r.return), 1) - 1;
+          ytdByYear[y] = cumReturn;
+        });
+
+        return (
+          <div className="card">
+            <div className="card-title">Monthly Returns</div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{fontSize:12,borderCollapse:"separate",borderSpacing:3}}>
+                <thead>
+                  <tr>
+                    <th style={{padding:"6px 8px",fontSize:11,border:"none"}}></th>
+                    {monthNames.map(m => <th key={m} style={{padding:"6px 8px",textAlign:"center",fontSize:11,border:"none",fontWeight:600}}>{m}</th>)}
+                    <th style={{padding:"6px 8px",textAlign:"center",fontSize:11,border:"none",fontWeight:600}}>YTD</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {years.map(y => (
+                    <tr key={y}>
+                      <td style={{padding:"6px 8px",fontWeight:700,color:"var(--text2)",border:"none",fontSize:12}}>{y}</td>
+                      {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => {
+                        const v = retLookup[`${y}-${m}`];
+                        return (
+                          <td key={m} style={{
+                            padding:"6px 10px",textAlign:"center",borderRadius:4,border:"none",
+                            background:getColor(v),
+                            color:v!=null?(Math.abs(v)<0.01?"var(--text2)":"var(--text)"):"transparent",
+                            fontWeight:600,fontSize:11,minWidth:48,
+                          }}>
+                            {v != null ? `${(v*100).toFixed(1)}%` : ""}
+                          </td>
+                        );
+                      })}
+                      <td style={{
+                        padding:"6px 10px",textAlign:"center",borderRadius:4,border:"none",
+                        background:getColor(ytdByYear[y]),
+                        color:"var(--text)",fontWeight:700,fontSize:11,minWidth:56,
+                      }}>
+                        {ytdByYear[y] != null ? `${(ytdByYear[y]*100).toFixed(1)}%` : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Benchmark comparison */}
       {Object.keys(benchmarks).length > 0 && (
