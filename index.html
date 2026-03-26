@@ -785,27 +785,38 @@ function SchwabAccount({onAnalyzeTicker}) {
           "3M": new Date(now.getFullYear(), now.getMonth()-3, now.getDate()),
           "6M": new Date(now.getFullYear(), now.getMonth()-6, now.getDate()),
           "YTD": new Date(now.getFullYear(), 0, 1),
+          "1Y": new Date(now.getFullYear()-1, now.getMonth(), now.getDate()),
+          "3Y": new Date(now.getFullYear()-3, now.getMonth(), now.getDate()),
+          "5Y": new Date(now.getFullYear()-5, now.getMonth(), now.getDate()),
           "ALL": new Date(2000, 0, 1),
         }[historyRange];
         const rangeStr = rangeStart.toISOString().slice(0,10);
         const filtered = historyData.filter(d => d.date >= rangeStr);
         if (filtered.length < 2) return null;
 
-        // Compute normalized performance (growth of $100k, adjusted for cash flows)
-        // Uses total_value (Schwab's actual account balance) for accurate TWR
-        // Filter to only trading days (days with benchmark data) to avoid weekend flat spots
-        const tradingDays = filtered.filter(d => d.benchmark_prices?.SPY > 0);
+        // Compute normalized performance (growth of $100k)
+        // Uses CHC Price index (NAV per share) when available — already adjusts for capital flows
+        // Falls back to TWR from total_value when CHC Price is not available
+        const tradingDays = filtered.filter(d => d.benchmark_prices?.SPY > 0 || d.chc_price > 0);
         const source = tradingDays.length >= 2 ? tradingDays : filtered;
         const chartData = [];
         let portfolioIndex = 100000;
         let lastSpyPrice = 0;
-        // Find first valid SPY price
+        let lastChcPrice = 0;
+        // Find first valid prices
         for (const d of source) { if (d.benchmark_prices?.SPY > 0) { lastSpyPrice = d.benchmark_prices.SPY; break; } }
+        for (const d of source) { if (d.chc_price > 0) { lastChcPrice = d.chc_price; break; } }
         const spyStart = lastSpyPrice || 1;
+        const chcStart = lastChcPrice || 0;
+        const useChcPrice = chcStart > 0;
 
         for (let i = 0; i < source.length; i++) {
           const d = source[i];
-          if (i > 0) {
+          if (useChcPrice && d.chc_price > 0) {
+            // Use CHC Price index directly — normalizes for capital flows via share count
+            portfolioIndex = (d.chc_price / chcStart) * 100000;
+          } else if (i > 0) {
+            // Fall back to TWR from total_value
             const prev = source[i-1];
             const prevValue = prev.total_value || prev.total_equity || 1;
             const currValue = d.total_value || d.total_equity || 0;
@@ -837,7 +848,7 @@ function SchwabAccount({onAnalyzeTicker}) {
                 <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Growth of $100k — normalized for deposits & withdrawals</div>
               </div>
               <div style={{display:"flex",gap:4}}>
-                {["1M","3M","6M","YTD","ALL"].map(r => (
+                {["1M","3M","6M","YTD","1Y","3Y","5Y","ALL"].map(r => (
                   <button key={r} className={"filter-btn"+(historyRange===r?" active":"")} onClick={()=>setHistoryRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
                 ))}
               </div>
@@ -890,8 +901,8 @@ function SchwabAccount({onAnalyzeTicker}) {
 
       {/* Drawdown Chart */}
       {historyData && historyData.length >= 2 && (() => {
-        // Compute drawdown from peak using TWR index
-        const tradingDays = historyData.filter(d => d.benchmark_prices?.SPY > 0);
+        // Compute drawdown from peak using CHC Price index (or TWR fallback)
+        const tradingDays = historyData.filter(d => d.benchmark_prices?.SPY > 0 || d.chc_price > 0);
         const source = tradingDays.length >= 2 ? tradingDays : historyData;
         if (source.length < 2) return null;
 
@@ -899,13 +910,20 @@ function SchwabAccount({onAnalyzeTicker}) {
         let peak = 100000;
         let spyIndex = 100000;
         let spyPeak = 100000;
-        let lastSpy = source[0].benchmark_prices?.SPY || 1;
-        const spyStart = lastSpy;
+        let lastSpy = 0;
+        let lastChcPrice = 0;
+        for (const d of source) { if (d.benchmark_prices?.SPY > 0) { lastSpy = d.benchmark_prices.SPY; break; } }
+        for (const d of source) { if (d.chc_price > 0) { lastChcPrice = d.chc_price; break; } }
+        const spyStart = lastSpy || 1;
+        const chcStart = lastChcPrice || 0;
+        const useChcPrice = chcStart > 0;
         const ddData = [];
 
         for (let i = 0; i < source.length; i++) {
           const d = source[i];
-          if (i > 0) {
+          if (useChcPrice && d.chc_price > 0) {
+            index = (d.chc_price / chcStart) * 100000;
+          } else if (i > 0) {
             const prev = source[i-1];
             const prevVal = prev.total_value || prev.total_equity || 1;
             const currVal = d.total_value || d.total_equity || 0;
@@ -989,11 +1007,11 @@ function SchwabAccount({onAnalyzeTicker}) {
 
       {/* Monthly Returns Heatmap */}
       {historyData && historyData.length >= 30 && (() => {
-        // Compute monthly returns using TWR
+        // Compute monthly returns using CHC Price index when available, otherwise TWR
         const tradingDays = historyData.filter(d => d.total_value > 0);
         if (tradingDays.length < 2) return null;
 
-        // Group by month and compute returns
+        // Group by month — track last CHC price and last total_value per month
         const monthlyValues = {};
         for (const d of tradingDays) {
           const ym = d.date.substring(0,7); // YYYY-MM
@@ -1007,10 +1025,18 @@ function SchwabAccount({onAnalyzeTicker}) {
         for (let i = 1; i < months.length; i++) {
           const prev = monthlyValues[months[i-1]];
           const curr = monthlyValues[months[i]];
-          const startVal = prev.last.total_value || 1;
-          const endVal = curr.last.total_value || 0;
-          const flows = curr.flows || 0;
-          const ret = (endVal - startVal - flows) / startVal;
+          // Prefer CHC Price for return calculation
+          const prevChc = prev.last.chc_price;
+          const currChc = curr.last.chc_price;
+          let ret;
+          if (prevChc > 0 && currChc > 0) {
+            ret = (currChc / prevChc) - 1;
+          } else {
+            const startVal = prev.last.total_value || 1;
+            const endVal = curr.last.total_value || 0;
+            const flows = curr.flows || 0;
+            ret = (endVal - startVal - flows) / startVal;
+          }
           const [y, m] = months[i].split("-");
           monthlyReturns.push({ year: y, month: parseInt(m), return: ret, label: months[i] });
         }
