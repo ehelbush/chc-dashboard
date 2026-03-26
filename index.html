@@ -1380,7 +1380,6 @@ function App() {
 
       {view==="dashboard"&&page==="portfolio"&&(
         <div>
-          <PortfolioMetrics portfolio={PORTFOLIO}/>
           <div className="card">
             <div className="card-title">Portfolio Tickers {"\u2014"} Sorted by {sortCfg.key.replace(/_/g," ")}<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8}}>(click a row to analyze)</span></div>
             <SummaryTable tickers={SEED_DATA} onSelect={handleSelect} sortCfg={sortCfg} onSort={handleSort}/>
