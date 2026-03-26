@@ -640,6 +640,26 @@ function SchwabAccount({onAnalyzeTicker}) {
   const [benchView, setBenchView] = useState("returns"); // returns | drawdown
   const [historyData, setHistoryData] = useState(null);
   const [historyRange, setHistoryRange] = useState("ALL");
+  const [balanceRange, setBalanceRange] = useState("ALL");
+  const [drawdownRange, setDrawdownRange] = useState("ALL");
+
+  const filterByRange = (data, range) => {
+    if (!data) return [];
+    const now = new Date();
+    const rangeStart = {
+      "1M": new Date(now.getFullYear(), now.getMonth()-1, now.getDate()),
+      "3M": new Date(now.getFullYear(), now.getMonth()-3, now.getDate()),
+      "6M": new Date(now.getFullYear(), now.getMonth()-6, now.getDate()),
+      "YTD": new Date(now.getFullYear(), 0, 1),
+      "1Y": new Date(now.getFullYear()-1, now.getMonth(), now.getDate()),
+      "3Y": new Date(now.getFullYear()-3, now.getMonth(), now.getDate()),
+      "5Y": new Date(now.getFullYear()-5, now.getMonth(), now.getDate()),
+      "ALL": new Date(2000, 0, 1),
+    }[range];
+    const rangeStr = rangeStart.toISOString().slice(0,10);
+    return data.filter(d => d.date >= rangeStr);
+  };
+  const rangeButtons = ["1M","3M","6M","YTD","1Y","3Y","5Y","ALL"];
 
   useEffect(() => {
     fetch("/api/schwab").then(r => r.json()).then(d => {
@@ -778,20 +798,7 @@ function SchwabAccount({onAnalyzeTicker}) {
 
       {/* Performance history chart */}
       {historyData && historyData.length >= 2 && (() => {
-        // Filter by selected time range
-        const now = new Date();
-        const rangeStart = {
-          "1M": new Date(now.getFullYear(), now.getMonth()-1, now.getDate()),
-          "3M": new Date(now.getFullYear(), now.getMonth()-3, now.getDate()),
-          "6M": new Date(now.getFullYear(), now.getMonth()-6, now.getDate()),
-          "YTD": new Date(now.getFullYear(), 0, 1),
-          "1Y": new Date(now.getFullYear()-1, now.getMonth(), now.getDate()),
-          "3Y": new Date(now.getFullYear()-3, now.getMonth(), now.getDate()),
-          "5Y": new Date(now.getFullYear()-5, now.getMonth(), now.getDate()),
-          "ALL": new Date(2000, 0, 1),
-        }[historyRange];
-        const rangeStr = rangeStart.toISOString().slice(0,10);
-        const filtered = historyData.filter(d => d.date >= rangeStr);
+        const filtered = filterByRange(historyData, historyRange);
         if (filtered.length < 2) return null;
 
         // CHC Share Price Index — the fund's NAV per share
@@ -857,7 +864,7 @@ function SchwabAccount({onAnalyzeTicker}) {
                 </div>
               </div>
               <div style={{display:"flex",gap:4}}>
-                {["1M","3M","6M","YTD","1Y","3Y","5Y","ALL"].map(r => (
+                {rangeButtons.map(r => (
                   <button key={r} className={"filter-btn"+(historyRange===r?" active":"")} onClick={()=>setHistoryRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
                 ))}
               </div>
@@ -879,8 +886,7 @@ function SchwabAccount({onAnalyzeTicker}) {
 
       {/* Account Balance History */}
       {historyData && historyData.length >= 2 && (() => {
-        // Filter to trading days only (avoid weekend duplicates)
-        const allDays = historyData.filter(d => d.benchmark_prices?.SPY > 0 || d.total_value > 0);
+        const allDays = filterByRange(historyData.filter(d => d.total_value > 0), balanceRange);
         if (allDays.length < 2) return null;
 
         const balanceData = allDays.map(d => ({
@@ -890,10 +896,15 @@ function SchwabAccount({onAnalyzeTicker}) {
 
         return (
           <div className="card">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
               <div>
                 <div className="card-title" style={{margin:0}}>Account Balance</div>
                 <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Total account value including cash — from Schwab</div>
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                {rangeButtons.map(r => (
+                  <button key={r} className={"filter-btn"+(balanceRange===r?" active":"")} onClick={()=>setBalanceRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
+                ))}
               </div>
             </div>
             <Chart
@@ -912,8 +923,9 @@ function SchwabAccount({onAnalyzeTicker}) {
       {/* Drawdown Chart */}
       {historyData && historyData.length >= 2 && (() => {
         // Compute drawdown from peak using CHC Price index (or TWR fallback)
-        const tradingDays = historyData.filter(d => d.benchmark_prices?.SPY > 0 || d.chc_price > 0);
-        const source = tradingDays.length >= 2 ? tradingDays : historyData;
+        const ddFiltered = filterByRange(historyData, drawdownRange);
+        const tradingDays = ddFiltered.filter(d => d.benchmark_prices?.SPY > 0 || d.chc_price > 0);
+        const source = tradingDays.length >= 2 ? tradingDays : ddFiltered;
         if (source.length < 2) return null;
 
         let index = 100000;
@@ -956,14 +968,17 @@ function SchwabAccount({onAnalyzeTicker}) {
 
         return (
           <div className="card">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
               <div>
                 <div className="card-title" style={{margin:0}}>Drawdown</div>
-                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Peak-to-trough decline — lower is worse</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>
+                  Max DD: <span style={{color:"var(--red)",fontWeight:600}}>{maxDD.toFixed(1)}%</span> CHC vs <span style={{color:"var(--blue)",fontWeight:600}}>{maxSpyDD.toFixed(1)}%</span> S&P 500
+                </div>
               </div>
-              <div style={{display:"flex",gap:16,fontSize:12}}>
-                <span style={{color:"var(--red)"}}>Max DD: {maxDD.toFixed(1)}%</span>
-                <span style={{color:"var(--blue)"}}>SPY Max DD: {maxSpyDD.toFixed(1)}%</span>
+              <div style={{display:"flex",gap:4}}>
+                {rangeButtons.map(r => (
+                  <button key={r} className={"filter-btn"+(drawdownRange===r?" active":"")} onClick={()=>setDrawdownRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
+                ))}
               </div>
             </div>
             {(() => {
