@@ -853,9 +853,7 @@ function SchwabAccount({onAnalyzeTicker}) {
               <div>
                 <div className="card-title" style={{margin:0}}>CHC Share Price</div>
                 <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>
-                  NAV per share — {years >= 1
-                    ? <span>annualized: <span style={{color:"var(--green)",fontWeight:600}}>{chcAnn>=0?"+":""}{chcAnn.toFixed(1)}%</span> CHC vs <span style={{color:"var(--blue)",fontWeight:600}}>{spyAnn>=0?"+":""}{spyAnn.toFixed(1)}%</span> S&P 500</span>
-                    : "normalized for deposits & withdrawals"}
+                  NAV per share — annualized: <span style={{color:"var(--green)",fontWeight:600}}>{chcAnn>=0?"+":""}{chcAnn.toFixed(1)}%</span> CHC vs <span style={{color:"var(--blue)",fontWeight:600}}>{spyAnn>=0?"+":""}{spyAnn.toFixed(1)}%</span> S&P 500
                 </div>
               </div>
               <div style={{display:"flex",gap:4}}>
