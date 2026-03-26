@@ -356,9 +356,20 @@ const dlr = v => v == null ? "\u2014" : "$"+v.toLocaleString("en-US",{maximumFra
 
 
 // ── SVG Chart ───────────────────────────────────────────────────────────────
-function Chart({ data, width, height, lines, xKey, yFormat, topPad }) {
+function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad }) {
   const [tip, setTip] = useState(null);
   const ref = useRef(null);
+  const containerRef = useRef(null);
+  const [autoWidth, setAutoWidth] = useState(propWidth || 900);
+  useEffect(() => {
+    if (containerRef.current) {
+      const ro = new ResizeObserver(entries => { for (const e of entries) setAutoWidth(Math.floor(e.contentRect.width)); });
+      ro.observe(containerRef.current);
+      setAutoWidth(containerRef.current.offsetWidth);
+      return () => ro.disconnect();
+    }
+  }, []);
+  const width = propWidth || autoWidth;
   const p = {t:topPad||20,r:20,b:40,l:70};
   const w = width-p.l-p.r, h2 = height-p.t-p.b;
   if (!data || !data.length) return null;
@@ -387,7 +398,7 @@ function Chart({ data, width, height, lines, xKey, yFormat, topPad }) {
   };
 
   return (
-    <div className="cc" style={{width}}>
+    <div className="cc" ref={containerRef} style={{width:propWidth||"100%"}}>
       <svg ref={ref} width={width} height={height} onMouseMove={onMM} onMouseLeave={()=>setTip(null)}>
         {yT.map((t,i)=><line key={i} x1={p.l} y1={t.y} x2={width-p.r} y2={t.y} stroke="#2e3348" strokeWidth="1" strokeDasharray="4,4"/>)}
         {yT.map((t,i)=><text key={"yl"+i} x={p.l-8} y={t.y+4} textAnchor="end" fill="#9498a8" fontSize="11">{yFormat ? yFormat(t.v) : "$"+(t.v/1000).toFixed(0)+"k"}</text>)}
@@ -869,7 +880,6 @@ function SchwabAccount({onAnalyzeTicker}) {
             </div>
             <Chart
               data={chartData}
-              width={900}
               height={320}
               topPad={50}
               xKey="date"
@@ -906,7 +916,6 @@ function SchwabAccount({onAnalyzeTicker}) {
             </div>
             <Chart
               data={balanceData}
-              width={900}
               height={280}
               topPad={50}
               xKey="date"
@@ -978,7 +987,7 @@ function SchwabAccount({onAnalyzeTicker}) {
               ))}
             </div>
             {(() => {
-              const w2 = 900, h3 = 250;
+              const w2 = 1400, h3 = 250;
               const pad = {t:50,r:20,b:40,l:60};
               const cw = w2-pad.l-pad.r, ch = h3-pad.t-pad.b;
               const mn = Math.min(...ddData.map(d=>Math.min(d.portfolio,d.spy)), 0);
@@ -1007,7 +1016,7 @@ function SchwabAccount({onAnalyzeTicker}) {
               for (let i = 0; i < ddData.length; i += xs) xTicks.push({i, x: xS(i), label: ddData[i].date.substring(0,7)});
 
               return (
-                <svg width={w2} height={h3}>
+                <svg width="100%" height={h3} viewBox={`0 0 ${w2} ${h3}`} preserveAspectRatio="none">
                   {yTicks.map((t,i) => <line key={i} x1={pad.l} y1={t.y} x2={w2-pad.r} y2={t.y} stroke="#2e3348" strokeWidth="1" strokeDasharray="4,4"/>)}
                   {yTicks.map((t,i) => <text key={"y"+i} x={pad.l-8} y={t.y+4} textAnchor="end" fill="#9498a8" fontSize="11">{t.v}%</text>)}
                   {xTicks.map((t,i) => <text key={"x"+i} x={t.x} y={h3-8} textAnchor="middle" fill="#9498a8" fontSize="10">{t.label}</text>)}
