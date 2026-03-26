@@ -356,7 +356,7 @@ const dlr = v => v == null ? "\u2014" : "$"+v.toLocaleString("en-US",{maximumFra
 
 
 // ── SVG Chart ───────────────────────────────────────────────────────────────
-function Chart({ data, width, height, lines, xKey }) {
+function Chart({ data, width, height, lines, xKey, yFormat }) {
   const [tip, setTip] = useState(null);
   const ref = useRef(null);
   const p = {t:20,r:20,b:40,l:70};
@@ -390,7 +390,7 @@ function Chart({ data, width, height, lines, xKey }) {
     <div className="cc" style={{width}}>
       <svg ref={ref} width={width} height={height} onMouseMove={onMM} onMouseLeave={()=>setTip(null)}>
         {yT.map((t,i)=><line key={i} x1={p.l} y1={t.y} x2={width-p.r} y2={t.y} stroke="#2e3348" strokeWidth="1" strokeDasharray="4,4"/>)}
-        {yT.map((t,i)=><text key={"yl"+i} x={p.l-8} y={t.y+4} textAnchor="end" fill="#9498a8" fontSize="11">{"$"+(t.v/1000).toFixed(0)+"k"}</text>)}
+        {yT.map((t,i)=><text key={"yl"+i} x={p.l-8} y={t.y+4} textAnchor="end" fill="#9498a8" fontSize="11">{yFormat ? yFormat(t.v) : "$"+(t.v/1000).toFixed(0)+"k"}</text>)}
         {xT.map((t,i)=><text key={"xl"+i} x={t.x} y={height-8} textAnchor="middle" fill="#9498a8" fontSize="10">{t.label}</text>)}
         {paths.map((q,i)=><path key={i} d={q.d} fill="none" stroke={q.color} strokeWidth={q.width||2} opacity={q.opacity||1}/>)}
         {tip&&<line x1={xS(tip.idx)} y1={p.t} x2={xS(tip.idx)} y2={p.t+h2} stroke="#9498a8" strokeWidth="1" strokeDasharray="3,3"/>}
@@ -398,7 +398,7 @@ function Chart({ data, width, height, lines, xKey }) {
       {tip&&tip.idx<data.length&&(
         <div className="ctt" style={{left:Math.min(tip.x+12,width-160),top:20}}>
           <div style={{color:"#9498a8",marginBottom:4}}>{data[tip.idx][xKey]}</div>
-          {lines.map((l,i)=><div key={i} style={{color:l.color}}>{l.label}: {dlr(data[tip.idx][l.key])}</div>)}
+          {lines.map((l,i)=><div key={i} style={{color:l.color}}>{l.label}: {yFormat ? yFormat(data[tip.idx][l.key]) : dlr(data[tip.idx][l.key])}</div>)}
         </div>
       )}
       <div className="cl">{lines.map((l,i)=><div key={i} className="cli"><div className="cld" style={{background:l.color}}/>{l.label}</div>)}</div>
@@ -794,58 +794,58 @@ function SchwabAccount({onAnalyzeTicker}) {
         const filtered = historyData.filter(d => d.date >= rangeStr);
         if (filtered.length < 2) return null;
 
-        // Compute normalized performance (growth of $100k)
-        // Uses CHC Price index (NAV per share) when available — already adjusts for capital flows
-        // Falls back to TWR from total_value when CHC Price is not available
+        // CHC Share Price Index — the fund's NAV per share
+        // Normalized to $1.00 at the start of the selected range, with SPY rebased to match
+        // After the spreadsheet ends (Feb 2026), extends using TWR from Schwab balances
         const tradingDays = filtered.filter(d => d.benchmark_prices?.SPY > 0 || d.chc_price > 0);
         const source = tradingDays.length >= 2 ? tradingDays : filtered;
         const chartData = [];
-        let portfolioIndex = 100000;
         let lastSpyPrice = 0;
         let lastChcPrice = 0;
         // Find first valid prices
         for (const d of source) { if (d.benchmark_prices?.SPY > 0) { lastSpyPrice = d.benchmark_prices.SPY; break; } }
         for (const d of source) { if (d.chc_price > 0) { lastChcPrice = d.chc_price; break; } }
         const spyStart = lastSpyPrice || 1;
-        const chcStart = lastChcPrice || 0;
-        const useChcPrice = chcStart > 0;
+        const chcStart = lastChcPrice || 1;
+        // Normalize SPY to start at same value as CHC price
+        let chcIndex = chcStart;
 
         for (let i = 0; i < source.length; i++) {
           const d = source[i];
-          if (useChcPrice && d.chc_price > 0) {
-            // Use CHC Price index directly — normalizes for capital flows via share count
-            portfolioIndex = (d.chc_price / chcStart) * 100000;
+          if (d.chc_price > 0) {
+            chcIndex = d.chc_price;
           } else if (i > 0) {
-            // Fall back to TWR from total_value
+            // Extend CHC index using TWR after spreadsheet ends
             const prev = source[i-1];
             const prevValue = prev.total_value || prev.total_equity || 1;
             const currValue = d.total_value || d.total_equity || 0;
             const flows = d.net_flows || 0;
             const dailyReturn = (currValue - prevValue - flows) / prevValue;
-            portfolioIndex *= (1 + dailyReturn);
+            chcIndex *= (1 + dailyReturn);
           }
           // Carry forward last known SPY price
           if (d.benchmark_prices?.SPY > 0) lastSpyPrice = d.benchmark_prices.SPY;
-          const spyNorm = (lastSpyPrice / spyStart) * 100000;
+          // Normalize SPY so it starts at the same value as CHC
+          const spyNorm = (lastSpyPrice / spyStart) * chcStart;
 
           chartData.push({
             date: d.date,
-            portfolio: Math.round(portfolioIndex),
-            spy: Math.round(spyNorm),
+            portfolio: Math.round(chcIndex * 10000) / 10000,
+            spy: Math.round(spyNorm * 10000) / 10000,
           });
         }
 
         const lastPortfolio = chartData[chartData.length-1].portfolio;
         const lastSpy = chartData[chartData.length-1].spy;
-        const portfolioReturn = ((lastPortfolio / 100000) - 1) * 100;
-        const spyReturn = ((lastSpy / 100000) - 1) * 100;
+        const portfolioReturn = ((lastPortfolio / chcStart) - 1) * 100;
+        const spyReturn = ((lastSpy / chcStart) - 1) * 100;
 
         return (
           <div className="card">
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
               <div>
-                <div className="card-title" style={{margin:0}}>Portfolio Performance</div>
-                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Growth of $100k — normalized for deposits & withdrawals</div>
+                <div className="card-title" style={{margin:0}}>CHC Share Price</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>NAV per share — normalized for deposits & withdrawals</div>
               </div>
               <div style={{display:"flex",gap:4}}>
                 {["1M","3M","6M","YTD","1Y","3Y","5Y","ALL"].map(r => (
@@ -858,8 +858,9 @@ function SchwabAccount({onAnalyzeTicker}) {
               width={900}
               height={320}
               xKey="date"
+              yFormat={v => "$" + v.toFixed(2)}
               lines={[
-                {key:"portfolio", color:"#22c55e", label:`Portfolio (${portfolioReturn>=0?"+":""}${portfolioReturn.toFixed(1)}%)`, width:2.5},
+                {key:"portfolio", color:"#22c55e", label:`CHC (${portfolioReturn>=0?"+":""}${portfolioReturn.toFixed(1)}%)`, width:2.5},
                 {key:"spy", color:"#3b82f6", label:`S&P 500 (${spyReturn>=0?"+":""}${spyReturn.toFixed(1)}%)`, width:1.5, opacity:0.7},
               ]}
             />
