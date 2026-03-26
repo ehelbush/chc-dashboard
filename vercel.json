@@ -1,6 +1,7 @@
 {
   "rewrites": [
-    { "source": "/api/yahoo", "destination": "/api/yahoo.py" }
+    { "source": "/api/yahoo", "destination": "/api/yahoo.py" },
+    { "source": "/api/schwab", "destination": "/api/schwab.py" }
   ],
   "headers": [
     {

@@ -631,6 +631,304 @@ function MarketScreener({onSelect}) {
 }
 
 
+// ── Schwab Account Tab ───────────────────────────────────────────────────────
+
+function SchwabAccount({onAnalyzeTicker}) {
+  const [schwabData, setSchwabData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [holdSort, setHoldSort] = useState({key:"market_value",dir:-1});
+  const [benchView, setBenchView] = useState("returns"); // returns | drawdown
+
+  useEffect(() => {
+    fetch("/api/schwab").then(r => r.json()).then(d => {
+      setSchwabData(d);
+      setLoading(false);
+    }).catch(() => {
+      // Try local file fallback
+      fetch("data/schwab_cache.json").then(r => r.json()).then(d => {
+        setSchwabData(d);
+        setLoading(false);
+      }).catch(() => setLoading(false));
+    });
+  }, []);
+
+  const handleHoldSort = key => setHoldSort(prev => ({key, dir: prev.key===key ? -prev.dir : 1}));
+
+  if (loading) return <div className="loading"><div className="spinner"></div> Loading Schwab account data...</div>;
+
+  if (!schwabData || schwabData.status === "not_configured" || !schwabData.accounts || schwabData.accounts.length === 0) {
+    return (
+      <div className="card" style={{textAlign:"center",padding:40}}>
+        <div style={{fontSize:18,fontWeight:600,marginBottom:12}}>Schwab Account Not Connected</div>
+        <div style={{color:"var(--text2)",maxWidth:600,margin:"0 auto",lineHeight:1.8}}>
+          <div style={{marginBottom:16}}>Connect your Schwab brokerage account to see live holdings, P&L, and benchmark comparisons.</div>
+          <div style={{background:"var(--bg3)",borderRadius:8,padding:16,textAlign:"left",fontSize:13}}>
+            <div style={{fontWeight:600,marginBottom:8,color:"var(--text)"}}>Setup Steps:</div>
+            <div>1. Create a <code>.env</code> file in chc-dashboard-web/ with your Schwab credentials</div>
+            <div style={{marginTop:4}}>2. Run <code style={{background:"var(--bg)",padding:"2px 6px",borderRadius:4}}>python3 schwab_auth.py</code> to authenticate</div>
+            <div style={{marginTop:4}}>3. Run <code style={{background:"var(--bg)",padding:"2px 6px",borderRadius:4}}>python3 schwab_sync.py</code> to fetch & cache data</div>
+            <div style={{marginTop:4}}>4. Commit and push <code>data/schwab_cache.json</code> to deploy</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const isStale = schwabData.status === "cached";
+  const auth = schwabData.auth_status || {};
+  const summary = schwabData.portfolio_summary || {};
+  const benchmarks = schwabData.benchmarks || {};
+  const allHoldings = [];
+  schwabData.accounts.forEach(a => a.holdings && a.holdings.forEach(h => allHoldings.push(h)));
+
+  // Sort holdings
+  const sortedHoldings = [...allHoldings].sort((a,b) => {
+    const av = a[holdSort.key] != null ? a[holdSort.key] : 0;
+    const bv = b[holdSort.key] != null ? b[holdSort.key] : 0;
+    if (typeof av === "string") return holdSort.dir * av.localeCompare(bv);
+    return holdSort.dir * (av - bv);
+  });
+
+  // Sector data (merge from all accounts)
+  const sectorMap = {};
+  let totalSectorValue = 0;
+  schwabData.accounts.forEach(a => {
+    if (a.sectors && a.sectors.sectors) {
+      Object.entries(a.sectors.sectors).forEach(([name, data]) => {
+        if (!sectorMap[name]) sectorMap[name] = {value:0, positions:[]};
+        sectorMap[name].value += data.value;
+        sectorMap[name].positions.push(...data.positions);
+        totalSectorValue += data.value;
+      });
+    }
+  });
+  const sectors = Object.entries(sectorMap)
+    .map(([name, d]) => ({name, value: d.value, weight: totalSectorValue > 0 ? d.value / totalSectorValue : 0, positions: d.positions}))
+    .sort((a,b) => b.value - a.value);
+
+  // Benchmark colors
+  const bColors = {SPY:"#3b82f6", QQQ:"#8b5cf6", IWM:"#f59e0b", DIA:"#06b6d4"};
+  const bNames = {SPY:"S&P 500", QQQ:"Nasdaq 100", IWM:"Russell 2000", DIA:"Dow 30"};
+
+  // Sector bar colors
+  const sColors = ["#3b82f6","#22c55e","#f59e0b","#8b5cf6","#ef4444","#06b6d4","#ec4899","#f97316","#14b8a6","#a855f7","#64748b","#6366f1"];
+
+  // Synced time display
+  const syncedAt = schwabData.synced_at ? new Date(schwabData.synced_at).toLocaleString() : "never";
+
+  return (
+    <div>
+      {/* Auth status banner */}
+      {(isStale || auth.needs_reauth) && (
+        <div style={{background:isStale?"rgba(239,68,68,0.12)":"rgba(234,179,8,0.12)", border:`1px solid ${isStale?"var(--red)":"var(--gold)"}`, borderRadius:10, padding:"12px 20px", marginBottom:20, display:"flex", alignItems:"center", gap:12, fontSize:13}}>
+          <span style={{fontSize:18}}>{isStale ? "\u26A0" : "\u23F0"}</span>
+          <div>
+            <span style={{fontWeight:600,color:isStale?"var(--red)":"var(--gold)"}}>
+              {isStale ? "Using cached data" : `Re-auth needed in ${auth.refresh_days_remaining} days`}
+            </span>
+            <span style={{color:"var(--text2)",marginLeft:8}}>
+              Last synced: {syncedAt}
+              {isStale && " \u2014 Run schwab_auth.py to reconnect"}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {!isStale && !auth.needs_reauth && (
+        <div style={{background:"rgba(34,197,94,0.08)", border:"1px solid rgba(34,197,94,0.3)", borderRadius:10, padding:"10px 20px", marginBottom:20, display:"flex", alignItems:"center", gap:12, fontSize:13}}>
+          <span style={{color:"var(--green)",fontSize:10}}>{"\u25CF"}</span>
+          <span style={{color:"var(--green)",fontWeight:600}}>Live</span>
+          <span style={{color:"var(--text2)"}}>Synced {syncedAt} {"\u2014"} Token valid for {auth.refresh_days_remaining} days</span>
+        </div>
+      )}
+
+      {/* Portfolio summary metrics */}
+      <div className="metrics-grid">
+        <div className="metric-card">
+          <div className="metric-label">Total Portfolio Value</div>
+          <div className="metric-value" style={{color:"var(--blue)"}}>${(summary.total_value||0).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+          <div className="metric-sub">{summary.positions_count||0} positions across {summary.accounts_count||0} account(s)</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Cash Balance</div>
+          <div className="metric-value">${(summary.total_cash||0).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+          <div className="metric-sub">{summary.total_equity ? ((summary.total_cash / summary.total_equity * 100).toFixed(1) + "% of equity") : ""}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Total Equity</div>
+          <div className="metric-value">${(summary.total_equity||0).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+          <div className="metric-sub">Liquidation value</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Accounts</div>
+          <div className="metric-value" style={{fontSize:20}}>{schwabData.accounts.map(a => a.account_id).join(", ")}</div>
+          <div className="metric-sub">{schwabData.accounts.map(a => a.account_type).join(", ")}</div>
+        </div>
+      </div>
+
+      {/* Benchmark comparison */}
+      {Object.keys(benchmarks).length > 0 && (
+        <div className="card">
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div className="card-title" style={{margin:0}}>Portfolio vs Benchmarks</div>
+            <div style={{display:"flex",gap:4}}>
+              <button className={"filter-btn"+(benchView==="returns"?" active":"")} onClick={()=>setBenchView("returns")} style={{padding:"4px 12px",fontSize:12}}>Returns</button>
+              <button className={"filter-btn"+(benchView==="drawdown"?" active":"")} onClick={()=>setBenchView("drawdown")} style={{padding:"4px 12px",fontSize:12}}>Drawdown</button>
+            </div>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
+            {Object.entries(benchmarks).map(([sym, bm]) => {
+              const color = bColors[sym] || "#9498a8";
+              const name = bNames[sym] || sym;
+              const val = benchView === "returns" ? bm.one_yr_return : bm.max_drawdown;
+              const annVal = bm.annualized_return;
+              const ytdVal = bm.ytd_return;
+
+              return (
+                <div key={sym} style={{background:"var(--bg3)",borderRadius:8,padding:16}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div>
+                      <span style={{fontWeight:700,color,fontSize:16}}>{sym}</span>
+                      <span style={{color:"var(--text2)",fontSize:12,marginLeft:8}}>{name}</span>
+                    </div>
+                    <span style={{fontSize:12,color:"var(--text2)"}}>${bm.current_price.toLocaleString()}</span>
+                  </div>
+
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
+                    <div>
+                      <div style={{fontSize:11,color:"var(--text2)"}}>1Y Return</div>
+                      <div style={{fontSize:15,fontWeight:700}} className={pc(bm.one_yr_return)}>{pct(bm.one_yr_return)}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:"var(--text2)"}}>YTD</div>
+                      <div style={{fontSize:15,fontWeight:700}} className={pc(bm.ytd_return)}>{pct(bm.ytd_return)}</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:11,color:"var(--text2)"}}>Annualized</div>
+                      <div style={{fontSize:15,fontWeight:700}} className={pc(bm.annualized_return)}>{pct(bm.annualized_return)}</div>
+                    </div>
+                  </div>
+
+                  {benchView === "drawdown" && (
+                    <div style={{marginTop:8}}>
+                      <div style={{fontSize:11,color:"var(--text2)"}}>Max Drawdown</div>
+                      <div style={{background:"var(--bg)",borderRadius:4,height:8,marginTop:4,position:"relative",overflow:"hidden"}}>
+                        <div style={{position:"absolute",right:0,top:0,height:"100%",width:Math.abs(bm.max_drawdown*100)+"%",background:"var(--red)",borderRadius:4,opacity:0.7}}/>
+                      </div>
+                      <div style={{fontSize:12,color:"var(--red)",fontWeight:600,marginTop:4}}>{pct(bm.max_drawdown)}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Sector allocation */}
+      {sectors.length > 0 && (
+        <div className="card">
+          <div className="card-title">Sector Allocation</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {sectors.map((s, i) => (
+              <div key={s.name} style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:140,fontSize:12,color:"var(--text2)",flexShrink:0,textOverflow:"ellipsis",overflow:"hidden",whiteSpace:"nowrap"}}>{s.name}</div>
+                <div style={{flex:1,background:"var(--bg3)",borderRadius:4,height:20,position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",left:0,top:0,height:"100%",width:(s.weight*100)+"%",background:sColors[i%sColors.length],borderRadius:4,opacity:0.8,transition:"width 0.3s"}}/>
+                </div>
+                <div style={{width:50,textAlign:"right",fontSize:12,fontWeight:600,color:sColors[i%sColors.length]}}>{(s.weight*100).toFixed(1)}%</div>
+                <div style={{width:80,textAlign:"right",fontSize:12,color:"var(--text2)"}}>${(s.value/1000).toFixed(1)}k</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Holdings table */}
+      <div className="card">
+        <div className="card-title">Holdings<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8,fontSize:12}}>(click to run CHC model)</span></div>
+        <div className="table-wrap">
+          <table>
+            <thead><tr>
+              {[
+                {label:"Symbol",field:"symbol"},{label:"Name",field:"name"},{label:"Qty",field:"quantity"},
+                {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},
+                {label:"Mkt Value",field:"market_value"},{label:"Total Gain",field:"total_gain"},
+                {label:"Gain %",field:"total_gain_pct"},{label:"Day %",field:"day_gain_pct"}
+              ].map(col => (
+                <th key={col.field} onClick={()=>handleHoldSort(col.field)}>
+                  {col.label}<span className="sa">{holdSort.key===col.field?(holdSort.dir===1?"\u25B2":"\u25BC"):"\u21C5"}</span>
+                </th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {sortedHoldings.map(h => (
+                <tr key={h.symbol} onClick={()=>onAnalyzeTicker && onAnalyzeTicker(h.symbol)} style={{cursor:"pointer"}}>
+                  <td className="tc">{h.symbol}</td>
+                  <td style={{maxWidth:200,overflow:"hidden",textOverflow:"ellipsis"}}>{h.name}</td>
+                  <td>{h.quantity.toLocaleString("en-US",{maximumFractionDigits:2})}</td>
+                  <td>${h.avg_cost.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                  <td>${h.current_price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                  <td style={{fontWeight:600}}>${h.market_value.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+                  <td className={h.total_gain>=0?"pos":"neg"}>${h.total_gain.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+                  <td className={pc(h.total_gain_pct)}>{pct(h.total_gain_pct)}</td>
+                  <td className={pc(h.day_gain_pct)}>{pct(h.day_gain_pct)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Top Holdings Donut (text-based) */}
+      {summary.top_holdings && summary.top_holdings.length > 0 && (
+        <div className="card">
+          <div className="card-title">Top 10 Holdings by Weight</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {summary.top_holdings.map((h, i) => (
+              <div key={h.symbol} style={{display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:60,fontSize:13,fontWeight:700,color:"var(--blue)"}}>{h.symbol}</div>
+                <div style={{flex:1,background:"var(--bg3)",borderRadius:4,height:24,position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",left:0,top:0,height:"100%",width:(h.weight*100)+"%",background:sColors[i%sColors.length],borderRadius:4,opacity:0.6}}/>
+                  <span style={{position:"absolute",left:8,top:3,fontSize:11,fontWeight:600,color:"var(--text)"}}>{(h.weight*100).toFixed(1)}%</span>
+                </div>
+                <div style={{width:80,textAlign:"right",fontSize:12,color:"var(--text2)"}}>${(h.value/1000).toFixed(1)}k</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent trades */}
+      {schwabData.accounts.some(a => a.recent_trades && a.recent_trades.length > 0) && (
+        <div className="card">
+          <div className="card-title">Recent Trades (90 days)</div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr>
+                <th>Date</th><th>Symbol</th><th>Type</th><th>Qty</th><th>Amount</th>
+              </tr></thead>
+              <tbody>
+                {schwabData.accounts.flatMap(a => a.recent_trades || []).slice(0, 20).map((t, i) => (
+                  <tr key={i}>
+                    <td>{t.date ? t.date.substring(0,10) : "\u2014"}</td>
+                    <td className="tc">{t.symbol || "\u2014"}</td>
+                    <td>{t.type}</td>
+                    <td>{t.quantity ? t.quantity.toLocaleString() : "\u2014"}</td>
+                    <td className={t.amount>=0?"pos":"neg"}>${Math.abs(t.amount).toLocaleString("en-US",{maximumFractionDigits:2})}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // ── Main App ────────────────────────────────────────────────────────────────
 
 function App() {
@@ -742,6 +1040,7 @@ function App() {
 
       <div className="nav-tabs">
         <div className={"nav-tab"+(page==="portfolio"&&view!=="detail"?" active":"")} onClick={()=>{setPage("portfolio");setView("dashboard");}}>Portfolio</div>
+        <div className={"nav-tab"+(page==="account"&&view!=="detail"?" active":"")} onClick={()=>{setPage("account");setView("dashboard");}}>Account</div>
         <div className={"nav-tab"+(page==="screener"&&view!=="detail"?" active":"")} onClick={()=>{setPage("screener");setView("dashboard");}}>Market Screener</div>
       </div>
 
@@ -769,6 +1068,10 @@ function App() {
             <SummaryTable tickers={SEED_DATA} onSelect={handleSelect} sortCfg={sortCfg} onSort={handleSort}/>
           </div>
         </div>
+      )}
+
+      {view==="dashboard"&&page==="account"&&(
+        <SchwabAccount onAnalyzeTicker={handleSelect}/>
       )}
 
       {view==="dashboard"&&page==="screener"&&(

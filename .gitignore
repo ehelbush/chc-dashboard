@@ -1,0 +1,11 @@
+# Schwab credentials & tokens (NEVER commit these)
+.env
+schwab_tokens.json
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# OS
+.DS_Store
