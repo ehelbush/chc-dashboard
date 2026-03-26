@@ -356,10 +356,10 @@ const dlr = v => v == null ? "\u2014" : "$"+v.toLocaleString("en-US",{maximumFra
 
 
 // ── SVG Chart ───────────────────────────────────────────────────────────────
-function Chart({ data, width, height, lines, xKey, yFormat }) {
+function Chart({ data, width, height, lines, xKey, yFormat, topPad }) {
   const [tip, setTip] = useState(null);
   const ref = useRef(null);
-  const p = {t:20,r:20,b:40,l:70};
+  const p = {t:topPad||20,r:20,b:40,l:70};
   const w = width-p.l-p.r, h2 = height-p.t-p.b;
   if (!data || !data.length) return null;
 
@@ -855,24 +855,23 @@ function SchwabAccount({onAnalyzeTicker}) {
         const spyAnn = years > 0 ? (Math.pow(lastSpy / chcStart, 1/years) - 1) * 100 : 0;
 
         return (
-          <div className="card">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
-              <div>
-                <div className="card-title" style={{margin:0}}>CHC Share Price</div>
-                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>
-                  NAV per share — annualized: <span style={{color:"var(--green)",fontWeight:600}}>{chcAnn>=0?"+":""}{chcAnn.toFixed(1)}%</span> CHC vs <span style={{color:"var(--blue)",fontWeight:600}}>{spyAnn>=0?"+":""}{spyAnn.toFixed(1)}%</span> S&P 500
-                </div>
+          <div className="card" style={{position:"relative",padding:"12px 20px 20px"}}>
+            <div style={{position:"absolute",top:12,left:20,zIndex:2}}>
+              <div className="card-title" style={{margin:0}}>CHC Share Price</div>
+              <div style={{fontSize:12,color:"var(--text2)",marginTop:2}}>
+                Annualized: <span style={{color:"var(--green)",fontWeight:600}}>{chcAnn>=0?"+":""}{chcAnn.toFixed(1)}%</span> CHC vs <span style={{color:"var(--blue)",fontWeight:600}}>{spyAnn>=0?"+":""}{spyAnn.toFixed(1)}%</span> S&P 500
               </div>
-              <div style={{display:"flex",gap:4}}>
-                {rangeButtons.map(r => (
-                  <button key={r} className={"filter-btn"+(historyRange===r?" active":"")} onClick={()=>setHistoryRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
-                ))}
-              </div>
+            </div>
+            <div style={{position:"absolute",top:12,right:20,zIndex:2,display:"flex",gap:3}}>
+              {rangeButtons.map(r => (
+                <button key={r} className={"filter-btn"+(historyRange===r?" active":"")} onClick={()=>setHistoryRange(r)} style={{padding:"3px 10px",fontSize:11}}>{r}</button>
+              ))}
             </div>
             <Chart
               data={chartData}
               width={900}
               height={320}
+              topPad={50}
               xKey="date"
               yFormat={v => "$" + v.toFixed(2)}
               lines={[
@@ -895,22 +894,21 @@ function SchwabAccount({onAnalyzeTicker}) {
         }));
 
         return (
-          <div className="card">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
-              <div>
-                <div className="card-title" style={{margin:0}}>Account Balance</div>
-                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Total account value including cash — from Schwab</div>
-              </div>
-              <div style={{display:"flex",gap:4}}>
-                {rangeButtons.map(r => (
-                  <button key={r} className={"filter-btn"+(balanceRange===r?" active":"")} onClick={()=>setBalanceRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
-                ))}
-              </div>
+          <div className="card" style={{position:"relative",padding:"12px 20px 20px"}}>
+            <div style={{position:"absolute",top:12,left:20,zIndex:2}}>
+              <div className="card-title" style={{margin:0}}>Account Balance</div>
+              <div style={{fontSize:12,color:"var(--text2)",marginTop:2}}>Total account value including cash</div>
+            </div>
+            <div style={{position:"absolute",top:12,right:20,zIndex:2,display:"flex",gap:3}}>
+              {rangeButtons.map(r => (
+                <button key={r} className={"filter-btn"+(balanceRange===r?" active":"")} onClick={()=>setBalanceRange(r)} style={{padding:"3px 10px",fontSize:11}}>{r}</button>
+              ))}
             </div>
             <Chart
               data={balanceData}
               width={900}
               height={280}
+              topPad={50}
               xKey="date"
               lines={[
                 {key:"balance", color:"#3b82f6", label:`Current: $${(balanceData[balanceData.length-1].balance/1000).toFixed(0)}k`, width:2},
@@ -967,23 +965,21 @@ function SchwabAccount({onAnalyzeTicker}) {
         const maxSpyDD = Math.min(...ddData.map(d => d.spy));
 
         return (
-          <div className="card">
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
-              <div>
-                <div className="card-title" style={{margin:0}}>Drawdown</div>
-                <div style={{fontSize:12,color:"var(--text2)",marginTop:4}}>
-                  Max DD: <span style={{color:"var(--red)",fontWeight:600}}>{maxDD.toFixed(1)}%</span> CHC vs <span style={{color:"var(--blue)",fontWeight:600}}>{maxSpyDD.toFixed(1)}%</span> S&P 500
-                </div>
-              </div>
-              <div style={{display:"flex",gap:4}}>
-                {rangeButtons.map(r => (
-                  <button key={r} className={"filter-btn"+(drawdownRange===r?" active":"")} onClick={()=>setDrawdownRange(r)} style={{padding:"4px 12px",fontSize:12}}>{r}</button>
-                ))}
+          <div className="card" style={{position:"relative",padding:"12px 20px 20px"}}>
+            <div style={{position:"absolute",top:12,left:20,zIndex:2}}>
+              <div className="card-title" style={{margin:0}}>Drawdown</div>
+              <div style={{fontSize:12,color:"var(--text2)",marginTop:2}}>
+                Max DD: <span style={{color:"var(--red)",fontWeight:600}}>{maxDD.toFixed(1)}%</span> CHC vs <span style={{color:"var(--blue)",fontWeight:600}}>{maxSpyDD.toFixed(1)}%</span> S&P 500
               </div>
             </div>
+            <div style={{position:"absolute",top:12,right:20,zIndex:2,display:"flex",gap:3}}>
+              {rangeButtons.map(r => (
+                <button key={r} className={"filter-btn"+(drawdownRange===r?" active":"")} onClick={()=>setDrawdownRange(r)} style={{padding:"3px 10px",fontSize:11}}>{r}</button>
+              ))}
+            </div>
             {(() => {
-              const w2 = 900, h3 = 220;
-              const pad = {t:10,r:20,b:40,l:60};
+              const w2 = 900, h3 = 250;
+              const pad = {t:50,r:20,b:40,l:60};
               const cw = w2-pad.l-pad.r, ch = h3-pad.t-pad.b;
               const mn = Math.min(...ddData.map(d=>Math.min(d.portfolio,d.spy)), 0);
               const mx = 0;
