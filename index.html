@@ -356,7 +356,7 @@ const dlr = v => v == null ? "\u2014" : "$"+v.toLocaleString("en-US",{maximumFra
 
 
 // ── SVG Chart ───────────────────────────────────────────────────────────────
-function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad }) {
+function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad, regions }) {
   const [tip, setTip] = useState(null);
   const ref = useRef(null);
   const containerRef = useRef(null);
@@ -400,6 +400,19 @@ function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad })
   return (
     <div className="cc" ref={containerRef} style={{width:propWidth||"100%"}}>
       <svg ref={ref} width={width} height={height} onMouseMove={onMM} onMouseLeave={()=>setTip(null)}>
+        {regions && regions.map((reg, ri) => {
+          // Find data indices for region start/end
+          let si = 0, ei = data.length - 1;
+          for (let i = 0; i < data.length; i++) { if (data[i][xKey] >= reg.startDate) { si = i; break; } }
+          for (let i = data.length - 1; i >= 0; i--) { if (!reg.endDate || data[i][xKey] <= reg.endDate) { ei = i; break; } }
+          if (si > ei) return null;
+          const rx = xS(si), rw = xS(ei) - xS(si);
+          return <g key={"reg"+ri}>
+            <rect x={rx} y={p.t} width={Math.max(rw,1)} height={h2} fill={reg.color} opacity={0.08}/>
+            <line x1={rx} y1={p.t} x2={rx} y2={p.t+h2} stroke={reg.color} strokeWidth={1} opacity={0.3} strokeDasharray="4,4"/>
+            <text x={rx + rw/2} y={p.t+12} textAnchor="middle" fill={reg.color} fontSize="9" opacity={0.7}>{reg.label}</text>
+          </g>;
+        })}
         {yT.map((t,i)=><line key={i} x1={p.l} y1={t.y} x2={width-p.r} y2={t.y} stroke="#2e3348" strokeWidth="1" strokeDasharray="4,4"/>)}
         {yT.map((t,i)=><text key={"yl"+i} x={p.l-8} y={t.y+4} textAnchor="end" fill="#9498a8" fontSize="11">{yFormat ? yFormat(t.v) : "$"+(t.v/1000).toFixed(0)+"k"}</text>)}
         {xT.map((t,i)=><text key={"xl"+i} x={t.x} y={height-8} textAnchor="middle" fill="#9498a8" fontSize="10">{t.label}</text>)}
@@ -715,6 +728,12 @@ function SchwabAccount({onAnalyzeTicker}) {
     );
   }
 
+  const STRATEGY_ERAS = [
+    { name: "Manual Timing", start: "2019-07-17", end: "2021-08-19", color: "#8b5cf6" },
+    { name: "Auto Timing",   start: "2021-08-20", end: "2025-06-12", color: "#3b82f6" },
+    { name: "Manual Recovery",start: "2025-06-13", end: null,         color: "#22c55e" },
+  ];
+
   const isStale = schwabData.status === "cached";
   const auth = schwabData.auth_status || {};
   const summary = schwabData.portfolio_summary || {};
@@ -888,7 +907,109 @@ function SchwabAccount({onAnalyzeTicker}) {
                 {key:"portfolio", color:"#22c55e", label:`CHC (${portfolioReturn>=0?"+":""}${portfolioReturn.toFixed(1)}%)`, width:2.5},
                 {key:"spy", color:"#3b82f6", label:`S&P 500 (${spyReturn>=0?"+":""}${spyReturn.toFixed(1)}%)`, width:1.5, opacity:0.7},
               ]}
+              regions={historyRange === "ALL" ? STRATEGY_ERAS.map(e => ({
+                startDate: e.start, endDate: e.end || "9999-12-31", color: e.color, label: e.name,
+              })) : undefined}
             />
+          </div>
+        );
+      })()}
+
+      {/* Strategy Performance by Era */}
+      {historyData && historyData.length >= 2 && (() => {
+        const eraMetrics = STRATEGY_ERAS.map(era => {
+          const eraData = historyData.filter(d => d.date >= era.start && (era.end ? d.date <= era.end : true));
+          if (eraData.length < 2) return null;
+
+          // Find first/last valid CHC price and SPY price
+          let firstChc = 0, lastChc = 0, firstSpy = 0, lastSpy = 0;
+          for (const d of eraData) { if (d.chc_price > 0) { firstChc = d.chc_price; break; } }
+          for (let i = eraData.length - 1; i >= 0; i--) { if (eraData[i].chc_price > 0) { lastChc = eraData[i].chc_price; break; } }
+          // If no chc_price after spreadsheet ends, extend using TWR
+          if (lastChc === 0 && firstChc > 0) {
+            let idx = firstChc;
+            for (let i = 1; i < eraData.length; i++) {
+              const d = eraData[i], prev = eraData[i-1];
+              if (d.chc_price > 0) { idx = d.chc_price; }
+              else {
+                const pv = prev.total_value || prev.total_equity || 1;
+                const cv = d.total_value || d.total_equity || 0;
+                const fl = d.net_flows || 0;
+                idx *= (1 + (cv - pv - fl) / pv);
+              }
+            }
+            lastChc = idx;
+          }
+          for (const d of eraData) { if (d.benchmark_prices?.SPY > 0) { firstSpy = d.benchmark_prices.SPY; break; } }
+          for (let i = eraData.length - 1; i >= 0; i--) { if (eraData[i].benchmark_prices?.SPY > 0) { lastSpy = eraData[i].benchmark_prices.SPY; break; } }
+
+          if (!firstChc || !lastChc || !firstSpy || !lastSpy) return null;
+
+          const startDt = new Date(eraData[0].date);
+          const endDt = new Date(eraData[eraData.length - 1].date);
+          const years = (endDt - startDt) / (365.25 * 24 * 60 * 60 * 1000);
+
+          const chcTotal = ((lastChc / firstChc) - 1) * 100;
+          const spyTotal = ((lastSpy / firstSpy) - 1) * 100;
+          const chcAnn = years > 0 ? (Math.pow(lastChc / firstChc, 1 / years) - 1) * 100 : chcTotal;
+          const spyAnn = years > 0 ? (Math.pow(lastSpy / firstSpy, 1 / years) - 1) * 100 : spyTotal;
+
+          const startLabel = startDt.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+          const endLabel = era.end ? endDt.toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "Present";
+
+          return {
+            ...era,
+            period: `${startLabel} – ${endLabel}`,
+            years: years.toFixed(1),
+            chcTotal, spyTotal, chcAnn, spyAnn,
+            delta: chcAnn - spyAnn,
+          };
+        }).filter(Boolean);
+
+        if (!eraMetrics.length) return null;
+
+        return (
+          <div className="card" style={{padding:"16px 20px"}}>
+            <div className="card-title">Strategy Performance</div>
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead>
+                  <tr style={{borderBottom:"1px solid var(--border)",color:"var(--text2)",fontSize:11,textTransform:"uppercase",letterSpacing:"0.5px"}}>
+                    <th style={{textAlign:"left",padding:"8px 12px 8px 0"}}>Strategy</th>
+                    <th style={{textAlign:"left",padding:"8px 12px"}}>Period</th>
+                    <th style={{textAlign:"center",padding:"8px 12px"}}>Duration</th>
+                    <th style={{textAlign:"right",padding:"8px 12px"}}>CHC Return</th>
+                    <th style={{textAlign:"right",padding:"8px 12px"}}>CHC Ann.</th>
+                    <th style={{textAlign:"right",padding:"8px 12px"}}>SPY Ann.</th>
+                    <th style={{textAlign:"right",padding:"8px 0 8px 12px"}}>SPY Delta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eraMetrics.map((e, i) => (
+                    <tr key={i} style={{borderBottom: i < eraMetrics.length - 1 ? "1px solid var(--border)" : "none"}}>
+                      <td style={{padding:"10px 12px 10px 0",display:"flex",alignItems:"center",gap:8}}>
+                        <div style={{width:10,height:10,borderRadius:"50%",background:e.color,flexShrink:0}}/>
+                        <span style={{fontWeight:500}}>{e.name}</span>
+                      </td>
+                      <td style={{padding:"10px 12px",color:"var(--text2)"}}>{e.period}</td>
+                      <td style={{padding:"10px 12px",textAlign:"center",color:"var(--text2)"}}>{e.years}y</td>
+                      <td style={{padding:"10px 12px",textAlign:"right",color:e.chcTotal>=0?"var(--green)":"var(--red)",fontWeight:600}}>
+                        {e.chcTotal>=0?"+":""}{e.chcTotal.toFixed(1)}%
+                      </td>
+                      <td style={{padding:"10px 12px",textAlign:"right",color:e.chcAnn>=0?"var(--green)":"var(--red)",fontWeight:600}}>
+                        {e.chcAnn>=0?"+":""}{e.chcAnn.toFixed(1)}%
+                      </td>
+                      <td style={{padding:"10px 12px",textAlign:"right",color:"var(--blue)",fontWeight:500}}>
+                        {e.spyAnn>=0?"+":""}{e.spyAnn.toFixed(1)}%
+                      </td>
+                      <td style={{padding:"10px 0 10px 12px",textAlign:"right",fontWeight:600,color:e.delta>=0?"var(--green)":"var(--red)"}}>
+                        {e.delta>=0?"+":""}{e.delta.toFixed(1)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         );
       })()}
