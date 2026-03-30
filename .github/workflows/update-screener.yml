@@ -1,4 +1,4 @@
-name: Update Market Screener Data
+name: Daily Data Sync
 
 on:
   schedule:
@@ -23,13 +23,39 @@ jobs:
       - name: Install dependencies
         run: pip install yfinance numpy pandas requests
 
-      - name: Run batch script
+      # ── Schwab Sync (portfolio history + account data) ──
+      - name: Write Schwab tokens
+        if: env.SCHWAB_TOKENS != ''
+        env:
+          SCHWAB_TOKENS: ${{ secrets.SCHWAB_TOKENS }}
+        run: echo "$SCHWAB_TOKENS" > schwab_tokens.json
+
+      - name: Run Schwab sync
+        if: env.SCHWAB_APP_KEY != ''
+        env:
+          SCHWAB_APP_KEY: ${{ secrets.SCHWAB_APP_KEY }}
+          SCHWAB_APP_SECRET: ${{ secrets.SCHWAB_APP_SECRET }}
+          SCHWAB_TOKENS: ${{ secrets.SCHWAB_TOKENS }}
+        run: python schwab_sync.py || echo "Schwab sync failed (token may be expired)"
+
+      - name: Update Schwab tokens secret
+        if: hashFiles('schwab_tokens.json') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          if [ -n "$GH_TOKEN" ] && [ -f schwab_tokens.json ]; then
+            gh secret set SCHWAB_TOKENS < schwab_tokens.json || echo "Could not update tokens secret"
+          fi
+
+      # ── Market Screener (ticker model scores) ──
+      - name: Run market screener
         run: python fetch_all_tickers.py
 
+      # ── Commit results ──
       - name: Check for changes
         id: check
         run: |
-          if git diff --quiet data/market_screener.json; then
+          if git diff --quiet data/ 2>/dev/null; then
             echo "changed=false" >> $GITHUB_OUTPUT
           else
             echo "changed=true" >> $GITHUB_OUTPUT
@@ -40,6 +66,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/market_screener.json
-          git commit -m "Auto-update market screener data $(date +%Y-%m-%d)"
+          git add data/
+          git commit -m "Daily data sync $(date +%Y-%m-%d)"
           git push

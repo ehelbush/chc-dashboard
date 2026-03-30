@@ -348,6 +348,158 @@ def append_history(cache):
     print(f"  Portfolio history {'updated' if updated else 'appended'} for {today} ({len(history)} total entries)")
 
 
+def backfill_missing_days(access_token):
+    """Fill any gaps in portfolio_history.json using Schwab price history.
+
+    Looks at the last entry, gets the holdings from it, fetches daily prices
+    for each symbol since then, and computes portfolio value for each missing
+    trading day.
+    """
+    if not HISTORY_FILE.exists():
+        print("  No history file to backfill from.")
+        return
+
+    history = json.loads(HISTORY_FILE.read_text())
+    if not history:
+        return
+
+    existing_dates = {e["date"] for e in history}
+    last_entry = history[-1]
+    last_date = last_entry["date"]
+    last_dt = datetime.strptime(last_date, "%Y-%m-%d")
+    today = datetime.now(timezone.utc)
+    today_str = today.strftime("%Y-%m-%d")
+
+    # Nothing to backfill if last entry is today
+    days_gap = (today - last_dt.replace(tzinfo=timezone.utc)).days
+    if days_gap <= 1:
+        print(f"  History is current (last entry: {last_date}). No backfill needed.")
+        return
+
+    print(f"  Last history entry: {last_date} ({days_gap} days ago). Backfilling...")
+
+    # Get positions from last entry
+    positions = {}
+    for h in last_entry.get("holdings", []):
+        sym = h.get("symbol")
+        qty = h.get("quantity", 0)
+        if sym and qty:
+            positions[sym] = qty
+
+    if not positions:
+        print("  [!] No positions in last history entry. Cannot backfill.")
+        return
+
+    # Fetch daily price history for each symbol since last_date
+    # Use period that covers the gap
+    symbols = list(positions.keys()) + ["SPY", "QQQ"]
+    price_data = {}  # {symbol: {date_str: close_price}}
+
+    for sym in symbols:
+        # Fetch enough history to cover the gap
+        # Use startDate/endDate for precise control
+        start_ms = int(last_dt.timestamp() * 1000)
+        end_ms = int(today.timestamp() * 1000)
+        params = urllib.parse.urlencode({
+            "periodType": "month",
+            "frequencyType": "daily",
+            "frequency": 1,
+            "startDate": start_ms,
+            "endDate": end_ms,
+        })
+        hist = schwab_get(f"/pricehistory?symbol={sym}&{params}", access_token, base=MARKET_BASE)
+
+        if hist and "candles" in hist:
+            sym_prices = {}
+            for candle in hist["candles"]:
+                ts = candle.get("datetime", 0) / 1000
+                d = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
+                sym_prices[d] = candle.get("close", 0)
+            price_data[sym] = sym_prices
+            print(f"    {sym}: {len(sym_prices)} daily prices")
+        else:
+            print(f"    {sym}: no price data returned")
+
+        time.sleep(0.3)  # Rate limit
+
+    if not price_data:
+        print("  [!] No price data fetched. Cannot backfill.")
+        return
+
+    # Find all trading dates where we have prices for ALL position symbols
+    position_syms = set(positions.keys())
+    all_dates = set()
+    for sym in position_syms:
+        if sym in price_data:
+            all_dates.update(price_data[sym].keys())
+    # Only keep dates where ALL position symbols have prices
+    for sym in position_syms:
+        if sym in price_data:
+            all_dates &= set(price_data[sym].keys())
+
+    # Filter to dates after last_date and not already in history
+    new_dates = sorted(d for d in all_dates if d > last_date and d not in existing_dates)
+
+    if not new_dates:
+        print("  No new trading days to backfill.")
+        return
+
+    print(f"  Backfilling {len(new_dates)} trading days: {new_dates[0]} to {new_dates[-1]}")
+
+    # Use the last known total_value to compute day_gain / net_flows
+    prev_value = last_entry.get("total_value", 0)
+
+    new_entries = []
+    for date_str in new_dates:
+        total_value = 0
+        holdings_snap = []
+        for sym, qty in positions.items():
+            if sym not in price_data or date_str not in price_data[sym]:
+                continue
+            price = price_data[sym][date_str]
+            mv = round(qty * price, 2)
+            total_value += mv
+            holdings_snap.append({
+                "symbol": sym,
+                "market_value": mv,
+                "weight": 0,
+                "quantity": qty,
+            })
+
+        # Compute weights
+        for h in holdings_snap:
+            h["weight"] = round(h["market_value"] / total_value, 4) if total_value > 0 else 0
+
+        # Day gain = change in value (assumes no cash flows between syncs)
+        day_gain = round(total_value - prev_value, 2) if prev_value else 0
+
+        # Benchmark prices
+        bench = {}
+        for sym in ["SPY", "QQQ"]:
+            if sym in price_data and date_str in price_data[sym]:
+                bench[sym] = round(price_data[sym][date_str], 2)
+
+        entry = {
+            "date": date_str,
+            "total_value": round(total_value, 2),
+            "total_equity": round(total_value, 2),
+            "cash_balance": last_entry.get("cash_balance", 0),
+            "net_flows": 0,
+            "day_gain": day_gain,
+            "positions_count": len(holdings_snap),
+            "holdings": holdings_snap,
+            "benchmark_prices": bench,
+        }
+        new_entries.append(entry)
+        prev_value = total_value
+
+    # Merge into history
+    history.extend(new_entries)
+    history.sort(key=lambda e: e["date"])
+    HISTORY_FILE.write_text(json.dumps(history, indent=2))
+    print(f"  Backfilled {len(new_entries)} entries. Total history: {len(history)} entries.")
+
+
 def sync_all(app_key, app_secret):
     """Main sync function — fetches everything and caches it."""
     tokens = load_tokens()
@@ -365,6 +517,10 @@ def sync_all(app_key, app_secret):
     now = datetime.now(timezone.utc)
 
     print(f"\n  Syncing Schwab data at {now.strftime('%Y-%m-%d %H:%M UTC')}...")
+
+    # 0. Backfill any missing days since last history entry
+    print("\n  Checking for missing history days...")
+    backfill_missing_days(access_token)
 
     # 1. Fetch accounts
     print("  Fetching accounts...")
