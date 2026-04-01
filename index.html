@@ -1443,6 +1443,11 @@ function App() {
   const [symbol, setSymbol] = useState("");
   const [years, setYears] = useState(5);
   const [mix, setMix] = useState(0.72);
+  const [volFlag, setVolFlag] = useState(2);
+  const [priceFlag, setPriceFlag] = useState(1);
+  const [buyThreshold, setBuyThreshold] = useState(0.0012);
+  const [sellThreshold, setSellThreshold] = useState(-0.0012);
+  const [tickerParams, setTickerParams] = useState(null);
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
   // Load local ticker data + screener data
@@ -1450,16 +1455,31 @@ function App() {
     Promise.all([
       fetch("data/tickers.json").then(r => r.json()).catch(() => null),
       fetch("data/market_screener.json").then(r => r.json()).catch(() => null),
-    ]).then(([td, sd]) => {
+      fetch("data/ticker_params.json").then(r => r.json()).catch(() => null),
+    ]).then(([td, sd, tp]) => {
       setLocalData(td);
       setScreenerData(sd);
+      setTickerParams(tp);
       setLoading(false);
     });
   }, []);
 
   const handleSort = key => setSortCfg(prev => ({key, dir: prev.key===key ? -prev.dir : 1}));
 
-  const analyzeTicker = useCallback(async (sym, y, m) => {
+  // Auto-load saved params when ticker symbol changes
+  const loadTickerParams = useCallback((ticker) => {
+    if (!ticker || !tickerParams) return;
+    const p = tickerParams[ticker.toUpperCase()];
+    if (p) {
+      setMix(p.vol_price_mix);
+      setVolFlag(p.vol_flag);
+      setPriceFlag(p.price_flag);
+      setBuyThreshold(p.buy_threshold);
+      setSellThreshold(p.sell_threshold);
+    }
+  }, [tickerParams]);
+
+  const analyzeTicker = useCallback(async (sym, y, m, overrides) => {
     const s = (sym || symbol).toUpperCase().trim();
     if (!s) return;
     setAnalyzing(true);
@@ -1467,6 +1487,11 @@ function App() {
     setView("detail");
     const yr = y != null ? y : years;
     const mx = m != null ? m : mix;
+    const ov = overrides || {};
+    const vf = ov.volFlag != null ? ov.volFlag : volFlag;
+    const pf = ov.priceFlag != null ? ov.priceFlag : priceFlag;
+    const bt = ov.buyThreshold != null ? ov.buyThreshold : buyThreshold;
+    const st = ov.sellThreshold != null ? ov.sellThreshold : sellThreshold;
 
     try {
       let dates, closes, volumes, name = s;
@@ -1487,6 +1512,7 @@ function App() {
       if (hasFullData) {
         const result = computeCHCModel(dates, closes, volumes, {
           evalYears: yr, volPriceMix: mx,
+          volFlag: vf, priceFlag: pf, buyThreshold: bt, sellThreshold: st,
         });
         if (result.error) { setError(result.error); setAnalyzing(false); return; }
         result.symbol = s;
@@ -1524,9 +1550,16 @@ function App() {
       setError(e.message);
     }
     setAnalyzing(false);
-  }, [symbol, years, mix, localData, screenerData]);
+  }, [symbol, years, mix, volFlag, priceFlag, buyThreshold, sellThreshold, localData, screenerData]);
 
-  const handleSelect = ticker => { setSymbol(ticker); analyzeTicker(ticker, years, mix); };
+  const handleSelect = ticker => {
+    setSymbol(ticker);
+    const p = tickerParams && tickerParams[ticker.toUpperCase()];
+    if (p) { setMix(p.vol_price_mix); setVolFlag(p.vol_flag); setPriceFlag(p.price_flag); setBuyThreshold(p.buy_threshold); setSellThreshold(p.sell_threshold); }
+    analyzeTicker(ticker, years, p ? p.vol_price_mix : mix, p ? {
+      volFlag: p.vol_flag, priceFlag: p.price_flag, buyThreshold: p.buy_threshold, sellThreshold: p.sell_threshold,
+    } : undefined);
+  };
   const handleKey = e => { if (e.key === "Enter") analyzeTicker(); };
 
   if (loading) return <div className="app"><div className="loading"><div className="spinner"></div> Loading dashboard...</div></div>;
@@ -1545,8 +1578,8 @@ function App() {
       </div>
 
       <div className="card">
-        <div className="controls">
-          <div className="cg"><label>Ticker Symbol</label><input type="text" value={symbol} onChange={e=>setSymbol(e.target.value.toUpperCase())} onKeyDown={handleKey} placeholder="e.g. MSFT" style={{width:120}}/></div>
+        <div className="controls" style={{flexWrap:"wrap"}}>
+          <div className="cg"><label>Ticker Symbol</label><input type="text" value={symbol} onChange={e=>{setSymbol(e.target.value.toUpperCase()); loadTickerParams(e.target.value);}} onKeyDown={handleKey} placeholder="e.g. MSFT" style={{width:120}}/></div>
           <div className="cg"><label>Evaluation Period</label>
             <select value={years} onChange={e=>setYears(Number(e.target.value))}>
               <option value={1}>1 Year</option><option value={2}>2 Years</option><option value={3}>3 Years</option>
@@ -1554,8 +1587,21 @@ function App() {
             </select>
           </div>
           <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
+          <div className="cg"><label>Vol Flag</label>
+            <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:70}}>
+              <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
+            </select>
+          </div>
+          <div className="cg"><label>Price Flag</label>
+            <select value={priceFlag} onChange={e=>setPriceFlag(Number(e.target.value))} style={{width:70}}>
+              <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
+            </select>
+          </div>
+          <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:90}}/></div>
+          <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:90}}/></div>
           <button onClick={()=>analyzeTicker()} disabled={analyzing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
           {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
+          {tickerParams && tickerParams[symbol] && <span style={{fontSize:10,color:"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>Saved params loaded</span>}
         </div>
         {error&&<div className="error-msg">{error}</div>}
       </div>
