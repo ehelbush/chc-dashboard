@@ -1782,6 +1782,9 @@ function App() {
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeResult, setOptimizeResult] = useState("");
   const [maxRecovery, setMaxRecovery] = useState(5);
+  const [committedParams, setCommittedParams] = useState(null); // snapshot from ticker_params.json
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
   // Load local ticker data + screener data
@@ -1794,6 +1797,7 @@ function App() {
       setLocalData(td);
       setScreenerData(sd);
       setTickerParams(tp);
+      setCommittedParams(tp ? JSON.parse(JSON.stringify(tp)) : null);
       setLoading(false);
     });
   }, []);
@@ -1896,6 +1900,63 @@ function App() {
     } : undefined);
   };
   const handleKey = e => { if (e.key === "Enter") analyzeTicker(); };
+
+  // Check if current ribbon params differ from last committed params for this ticker
+  const hasUncommittedChanges = (() => {
+    const s = symbol.toUpperCase().trim();
+    if (!s || !committedParams) return false;
+    const c = committedParams[s];
+    if (!c) return tickerParams && tickerParams[s]; // new ticker, never committed
+    return c.vol_flag !== volFlag || c.price_flag !== priceFlag ||
+      c.vol_price_mix !== mix || c.buy_threshold !== buyThreshold || c.sell_threshold !== sellThreshold;
+  })();
+
+  const commitParams = async () => {
+    const s = symbol.toUpperCase().trim();
+    if (!s) return;
+    setSaving(true);
+    setSaveMsg("");
+    const paramObj = {
+      vol_flag: volFlag, price_flag: priceFlag, vol_price_mix: mix,
+      buy_threshold: buyThreshold, sell_threshold: sellThreshold,
+    };
+    // Include optimization metadata if present
+    const current = tickerParams && tickerParams[s];
+    if (current && current.last_optimized) paramObj.last_optimized = current.last_optimized;
+    if (current && current.train_metrics) paramObj.train_metrics = current.train_metrics;
+    if (current && current.test_metrics) paramObj.test_metrics = current.test_metrics;
+
+    try {
+      const resp = await fetch("/api/save_params", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ticker: s, params: paramObj}),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || "Save failed");
+      // Update committed snapshot
+      setCommittedParams(prev => ({...prev, [s]: {...paramObj}}));
+      setTickerParams(prev => ({...prev, [s]: {...paramObj}}));
+      setSaveMsg("Committed " + s);
+    } catch (e) {
+      setSaveMsg("Error: " + e.message);
+    }
+    setSaving(false);
+  };
+
+  const revertParams = () => {
+    const s = symbol.toUpperCase().trim();
+    if (!s || !committedParams || !committedParams[s]) return;
+    const c = committedParams[s];
+    setVolFlag(c.vol_flag);
+    setPriceFlag(c.price_flag);
+    setMix(c.vol_price_mix);
+    setBuyThreshold(c.buy_threshold);
+    setSellThreshold(c.sell_threshold);
+    // Reset in-memory tickerParams to committed state
+    setTickerParams(prev => ({...prev, [s]: {...c}}));
+    setSaveMsg("Reverted " + s + " to committed params");
+  };
 
   const optimizeTicker = async () => {
     const s = symbol.toUpperCase().trim();
@@ -2092,9 +2153,13 @@ function App() {
               <div className="cg"><label>Max Recovery (yrs)</label><input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:80}}/></div>
               <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
               <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{optimizing?"Optimizing...":"Optimize"}</button>
+              {hasUncommittedChanges && <button onClick={commitParams} disabled={saving||optimizing} style={{background:"var(--green)",color:"#000",border:"none",fontWeight:600}}>{saving?"Saving...":"Commit"}</button>}
+              {hasUncommittedChanges && <button onClick={revertParams} disabled={saving||optimizing} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>Revert</button>}
               {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
-              {tickerParams && tickerParams[symbol] && <span style={{fontSize:10,color:"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>Saved params loaded</span>}
+              {tickerParams && tickerParams[symbol] && !hasUncommittedChanges && <span style={{fontSize:10,color:"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>Saved params loaded</span>}
+              {hasUncommittedChanges && <span style={{fontSize:10,color:"orange",alignSelf:"flex-end",paddingBottom:6}}>Unsaved changes</span>}
               {optimizeResult && <span style={{fontSize:10,color:"var(--blue)",alignSelf:"flex-end",paddingBottom:6}}>{optimizeResult}</span>}
+              {saveMsg && <span style={{fontSize:10,color:saveMsg.startsWith("Error")?"var(--red)":"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>{saveMsg}</span>}
             </div>
             {error&&<div className="error-msg">{error}</div>}
           </div>
