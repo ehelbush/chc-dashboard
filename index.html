@@ -146,6 +146,9 @@ const DEFINITIONS = [
   ["Max Loss", "The worst peak-to-trough drawdown observed during the evaluation period. Can be misleading if it reflects a single extreme event rather than typical behavior (see Stat3 Loss)."],
   ["Recovery Period", "Estimated years to recover from the maximum loss, given the average yearly return. Formula: -2 x ln(1 + maxLoss) / ln(1 + avgYearlyReturn). Lower is better. 'Never' means the average return is negative, so the asset cannot mathematically recover."],
   ["Market Cap", "Total market capitalization (share price x shares outstanding). Useful for filtering out micro-cap / penny stocks susceptible to pump-and-dump. Sourced from Yahoo Finance."],
+  ["Optimizer (Two-Stage Search)", "The parameter optimizer uses a two-pass grid search. Stage 1 does a coarse sweep across wide ranges (thresholds -0.1 to +0.1, mix 0-1 in 0.1 steps, all vol/price flag combos). Stage 2 takes the top 10 results and refines with a tight grid around each (threshold \u00B10.01 in 0.0005 steps, mix \u00B10.1 in 0.02 steps). Total ~11,000 evaluations covering a 10\u00D7 wider search space than single-pass."],
+  ["Train/Test Split", "The optimizer splits the evaluation period 80/20. Parameters are optimized on the first 80% of data (training set) and then evaluated on the remaining 20% (test set). If the test return is far below the training return, the parameters may be overfit to historical noise. Both metrics are reported in the result line."],
+  ["Max Recovery Constraint", "An optimizer input (default 5 years) that filters candidate parameter sets. Only combinations whose estimated recovery period is at or below this limit are considered. If none pass, the optimizer falls back to all results with positive recovery. Tighter values (e.g. 3 years) favor conservative, low-drawdown configurations; looser values allow higher-return / higher-risk configurations."],
 ];
 
 // ── CHC Trading Model (JavaScript port) ─────────────────────────────────────
@@ -2095,6 +2098,49 @@ function App() {
             </div>
             {error&&<div className="error-msg">{error}</div>}
           </div>
+
+          {page==="analysis"&&view!=="detail"&&!analyzing&&(
+            <details className="card" style={{padding:"16px 20px",maxWidth:900,cursor:"default"}}>
+              <summary style={{fontWeight:600,fontSize:13,color:"var(--text)",cursor:"pointer",marginBottom:0}}>How the Optimizer Works</summary>
+              <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.7,marginTop:12}}>
+                <p style={{margin:"0 0 10px"}}>
+                  The optimizer finds the best combination of <strong>Vol Flag</strong>, <strong>Price Flag</strong>, <strong>Vol/Price Mix</strong>, and <strong>Buy/Sell Threshold</strong> for a given ticker by searching thousands of parameter combinations and selecting the one with the highest annualized return that keeps the recovery period under the configured maximum.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Train / Test Split (Overfitting Protection)</div>
+                <p style={{margin:"0 0 10px"}}>
+                  The evaluation period is split 80/20. The optimizer searches for the best parameters using only the <strong>first 80%</strong> of the data (the training set). The winning parameters are then evaluated on the <strong>last 20%</strong> (the test set) to see how they perform on data the optimizer never saw. This guards against overfitting {"\u2014"} if the test return is dramatically lower than the train return, the parameters may be curve-fit to historical noise rather than genuine signal. Both metrics are shown in the result: <code>Train: 15.2% / 2.1yr | Test: 8.7% / 3.4yr</code>.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Two-Stage Search</div>
+                <p style={{margin:"0 0 6px"}}>
+                  A single fine-grained grid over the full parameter space would require millions of evaluations. Instead, the optimizer uses a two-stage approach:
+                </p>
+                <ul style={{margin:"0 0 10px",paddingLeft:20}}>
+                  <li style={{marginBottom:4}}><strong>Stage 1 (Coarse):</strong> Wide sweep across all 4 vol flags {"\u00D7"} 4 price flags {"\u00D7"} 11 mix values (0 to 1, step 0.1) {"\u00D7"} 41 thresholds (-0.1 to +0.1, step 0.005) = ~7,200 combinations. This broad range catches optimal thresholds that the previous -0.02 to +0.02 range missed (e.g., TPR at -0.065).</li>
+                  <li style={{marginBottom:4}}><strong>Stage 2 (Fine):</strong> Takes the top 10 results from Stage 1 and refines each with a tighter grid: {"\u00B1"}0.01 threshold (step 0.0005) and {"\u00B1"}0.1 mix (step 0.02) around each seed, keeping the same vol/price flags. Duplicate combinations are skipped. This typically adds ~4,000{"\u2013"}5,000 more evaluations.</li>
+                </ul>
+                <p style={{margin:"0 0 10px"}}>
+                  Total work is roughly 11,000{"\u2013"}12,000 evaluations {"\u2014"} comparable to the old single-pass grid but covering a 10{"\u00D7"} wider threshold range with finer precision around the best candidates.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Recovery Constraint</div>
+                <p style={{margin:"0 0 10px"}}>
+                  The <strong>Max Recovery (yrs)</strong> input controls the maximum acceptable recovery period. The optimizer first filters candidates to those with a recovery period at or below this limit, then picks the highest return. If no candidates pass the filter, it falls back to all results with any positive recovery. Default is 5 years.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Selection Criteria</div>
+                <p style={{margin:"0 0 10px"}}>
+                  Among all candidates that pass the recovery filter, the optimizer selects the parameter set with the <strong>highest annualized return</strong> on the training data. This biases toward growth while the recovery constraint prevents selecting parameters that produce high returns at the cost of catastrophic drawdowns.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Parameter History</div>
+                <p style={{margin:0}}>
+                  When the optimizer finishes, it stores a <code>last_optimized</code> timestamp and a snapshot of the previous parameters (<code>prev_params</code>) in memory. This enables future commit/revert functionality {"\u2014"} optimized parameters are "staged" in the ribbon but not persisted to <code>ticker_params.json</code> until explicitly committed.
+                </p>
+              </div>
+            </details>
+          )}
 
           {view==="detail"&&(analyzing
             ? <div className="loading"><div className="spinner"></div> Fetching data and running model...</div>
