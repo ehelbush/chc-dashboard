@@ -1589,12 +1589,12 @@ function App() {
           </div>
           <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
           <div className="cg"><label>Vol Flag</label>
-            <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:70}}>
+            <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:90}}>
               <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
             </select>
           </div>
           <div className="cg"><label>Price Flag</label>
-            <select value={priceFlag} onChange={e=>setPriceFlag(Number(e.target.value))} style={{width:70}}>
+            <select value={priceFlag} onChange={e=>setPriceFlag(Number(e.target.value))} style={{width:90}}>
               <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
             </select>
           </div>
