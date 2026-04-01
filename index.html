@@ -254,7 +254,6 @@ function computeCHCModel(dates, closes, volumes, opts) {
     const stat3Loss = avgLoss - 3 * stdLoss;
     let recovery = 0;
     if (maxLoss < 0 && avgYrRet > 0) recovery = -2 * Math.log(1 + maxLoss) / Math.log(1 + avgYrRet);
-    else if (maxLoss < 0 && avgYrRet <= 0) recovery = 999;
     return {
       last_yr_return: +lastYrRet.toFixed(6), avg_yr_return: +avgYrRet.toFixed(6),
       current_loss: +currentLoss.toFixed(6), max_loss: +maxLoss.toFixed(6),
@@ -493,7 +492,7 @@ function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
           <td className={pc(t.est_next_yr_return)}>{pct(t.est_next_yr_return)}</td>
           <td className={pc(t.current_loss)}>{pct(t.current_loss)}</td>
           <td className="neg">{pct(t.stat3_loss)}</td>
-          <td className={t.recovery_period>=999?"neg":rc(t.recovery_period)}>{t.recovery_period>=999?"Never":t.recovery_period.toFixed(1)}</td>
+          <td className={rc(t.recovery_period)}>{t.recovery_period.toFixed(1)}</td>
         </tr>
       ))}
     </tbody></table></div>
@@ -539,7 +538,7 @@ function TickerDetail({data,onBack}) {
             <div className="dr"><span>Current Loss</span><span className="neg">{pct(trading?trading.current_loss:null)}</span></div>
             <div className="dr"><span>Max Loss</span><span className="neg">{pct(trading?trading.max_loss:null)}</span></div>
             <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(trading?trading.stat3_loss:null)}</span></div>
-            <div className="dr"><span>Recovery Period</span><span className={trading&&trading.recovery_period>=999?"neg":rc(trading&&trading.recovery_period!=null?trading.recovery_period:0)}>{trading&&trading.recovery_period!=null?(trading.recovery_period>=999?"Never":trading.recovery_period.toFixed(1)+" years"):"\u2014"}</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={rc(trading&&trading.recovery_period!=null?trading.recovery_period:0)}>{trading&&trading.recovery_period!=null?trading.recovery_period.toFixed(1):"\u2014"} years</span></div>
           </div>
         </div>
         <div className="card">
@@ -552,7 +551,7 @@ function TickerDetail({data,onBack}) {
             <div className="dr"><span>Current Loss</span><span className="neg">{pct(buy_hold?buy_hold.current_loss:null)}</span></div>
             <div className="dr"><span>Max Loss</span><span className="neg">{pct(buy_hold?buy_hold.max_loss:null)}</span></div>
             <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(buy_hold?buy_hold.stat3_loss:null)}</span></div>
-            <div className="dr"><span>Recovery Period</span><span className={buy_hold&&buy_hold.recovery_period>=999?"neg":rc(buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period:0)}>{buy_hold&&buy_hold.recovery_period!=null?(buy_hold.recovery_period>=999?"Never":buy_hold.recovery_period.toFixed(1)+" years"):"\u2014"}</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={rc(buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period:0)}>{buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period.toFixed(1):"\u2014"} years</span></div>
           </div>
           <div className="ds"><h4>Model Parameters</h4>
             <div className="dr"><span>Vol/Price Mix</span><span>{params?(params.vol_price_mix*100).toFixed(0):"72"}% vol / {params?((1-params.vol_price_mix)*100).toFixed(0):"28"}% price</span></div>
@@ -1724,31 +1723,6 @@ function App() {
               <ul style={{margin:0,paddingLeft:20,color:"var(--text2)",fontSize:13,lineHeight:1.8}}>
                 {release.items.map((item,i) => <li key={i} style={{color:"var(--text)"}}>{item}</li>)}
               </ul>
-            </div>
-          ))}
-        </div>
-
-        <div className="card" style={{padding:"20px 24px",maxWidth:900,marginTop:16}}>
-          <div className="card-title" style={{marginBottom:16}}>Definitions</div>
-          {[
-            {term:"Signal (Buy/Sell)", def:"The model's current recommendation. Buy means the combined timing signal is above the buy threshold; Sell means it's below the sell threshold. Hold (carry previous signal) when between thresholds."},
-            {term:"Call Strength", def:"The raw value of the combined timing signal. Positive values lean toward Buy, negative toward Sell. Magnitude indicates conviction — values near zero are weak signals."},
-            {term:"Vol/Price Mix", def:"The blend weight between volume ratio and price slope in the combined signal. 0 = 100% price, 1 = 100% volume. Each asset has its own optimized mix (e.g., AVGO uses 0.15, TPR uses 0.98)."},
-            {term:"Vol Flag", def:"Controls the moving average window for the volume ratio calculation. 0 = 1-day (raw), 1 = 50-day, 2 = 100-day, 3 = 120-day. Longer windows smooth out noise but react slower."},
-            {term:"Price Flag", def:"Controls the moving average window for the price slope calculation. Same scale as Vol Flag: 0 = 1-day, 1 = 50-day, 2 = 100-day, 3 = 120-day."},
-            {term:"Buy/Sell Threshold", def:"The combined signal level that triggers a Buy or Sell. When the signal crosses above the buy threshold, the model goes long. When it crosses below the sell threshold, it goes to cash. Each asset has its own tuned thresholds."},
-            {term:"Last Yr Return", def:"The asset's total return over the most recent 252 trading days (approximately 1 year), using the trading strategy (not buy-and-hold)."},
-            {term:"Avg Yr Return (Annualized)", def:"The compound annual growth rate (CAGR) over the full evaluation period (default 5 years) using the trading strategy."},
-            {term:"Est Next Yr Return", def:"A simple estimate: (Last Year Return + Average Yearly Return) / 2. This blends recent momentum with long-term average performance."},
-            {term:"Current Loss (Drawdown)", def:"How far the asset's trading balance is currently below its all-time high. 0% means it's at or near its peak. -25% means it's 25% below peak."},
-            {term:"Stat3 Loss", def:"The statistically expected worst-case loss: Average Loss + 3 x Standard Deviation of losses. This is an engineering design-point approach — over 99% of observed losses fall within this bound. More reliable than max loss, which may reflect a one-time black swan event."},
-            {term:"Max Loss", def:"The worst peak-to-trough drawdown observed during the evaluation period. Can be misleading if it reflects a single extreme event rather than typical behavior (see Stat3 Loss)."},
-            {term:"Recovery Period", def:"Estimated years to recover from the maximum loss, given the average yearly return. Formula: -2 x ln(1 + maxLoss) / ln(1 + avgYearlyReturn). Lower is better. 'Never' means the average return is negative, so mathematically the asset cannot recover."},
-            {term:"Market Cap", def:"Total market capitalization — share price x shares outstanding. Useful for filtering out micro-cap / penny stocks that are susceptible to pump-and-dump schemes. Sourced from Yahoo Finance."},
-          ].map((d, i, arr) => (
-            <div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i !== arr.length-1?"1px solid var(--border)":"none"}}>
-              <div style={{fontWeight:600,fontSize:13,color:"var(--text)",marginBottom:4}}>{d.term}</div>
-              <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>{d.def}</div>
             </div>
           ))}
         </div>
