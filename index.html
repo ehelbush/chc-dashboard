@@ -575,7 +575,10 @@ function MarketScreener({onSelect}) {
   const [filter, setFilter] = useState("all");
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
   const [page, setPage] = useState(0);
+  const [filters, setFilters] = useState({});
+  const [showFilters, setShowFilters] = useState(false);
   const perPage = 50;
+  const setF = (k, v) => { setFilters(prev => { const n = {...prev}; if (v === "" || v == null) delete n[k]; else n[k] = v; return n; }); setPage(0); };
 
   useEffect(() => {
     fetch("data/market_screener.json")
@@ -595,16 +598,22 @@ function MarketScreener({onSelect}) {
     }
     if (filter === "buy") items = items.filter(t => t.buy_sell_call === "Buy");
     if (filter === "sell") items = items.filter(t => t.buy_sell_call === "Sell");
+    if (filters.sector) items = items.filter(t => t.sector === filters.sector);
+    if (filters.market_cap_min) items = items.filter(t => (t.market_cap || 0) >= filters.market_cap_min);
+    if (filters.recovery_max != null) items = items.filter(t => t.recovery_period != null && t.recovery_period <= filters.recovery_max);
+    if (filters.avg_yr_min != null) items = items.filter(t => (t.av_yrly_return || 0) >= filters.avg_yr_min / 100);
+    if (filters.last_yr_min != null) items = items.filter(t => (t.last_yr_return || 0) >= filters.last_yr_min / 100);
     const {key, dir} = sortCfg;
     return [...items].sort((a, b) => {
       const av = a[key] != null ? a[key] : 0, bv = b[key] != null ? b[key] : 0;
       if (typeof av === "string") return dir * av.localeCompare(bv);
       return dir * (av - bv);
     });
-  }, [data, search, filter, sortCfg]);
+  }, [data, search, filter, filters, sortCfg]);
 
   const totalPages = Math.ceil(filtered.length / perPage);
   const pageItems = filtered.slice(page * perPage, (page + 1) * perPage);
+  const activeFilterCount = Object.keys(filters).length;
 
   if (loading) return <div className="loading"><div className="spinner"></div> Loading market screener data...</div>;
   if (!data || !data.results || data.results.length === 0) {
@@ -623,6 +632,7 @@ function MarketScreener({onSelect}) {
 
   const buyCount = data.results.filter(t => t.buy_sell_call === "Buy").length;
   const sellCount = data.results.length - buyCount;
+  const sectors = [...new Set(data.results.map(t => t.sector).filter(Boolean))].sort();
 
   return (
     <div>
@@ -639,8 +649,46 @@ function MarketScreener({onSelect}) {
           <button className={"filter-btn"+(filter==="all"?" active":"")} onClick={()=>{setFilter("all");setPage(0);}}>All</button>
           <button className={"filter-btn"+(filter==="buy"?" active":"")} onClick={()=>{setFilter("buy");setPage(0);}}>Buy Only</button>
           <button className={"filter-btn"+(filter==="sell"?" active":"")} onClick={()=>{setFilter("sell");setPage(0);}}>Sell Only</button>
+          <button className={"filter-btn"+(showFilters?" active":"")} onClick={()=>setShowFilters(p=>!p)} style={{marginLeft:8}}>
+            Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
+          </button>
+          {activeFilterCount > 0 && <button className="filter-btn" onClick={()=>{setFilters({});setPage(0);}}>Clear Filters</button>}
           <span className="screener-stats">Showing {filtered.length.toLocaleString()} tickers</span>
         </div>
+
+        {showFilters && (
+          <div style={{display:"flex",flexWrap:"wrap",gap:12,padding:"8px 16px 12px",borderBottom:"1px solid var(--border)",alignItems:"flex-end"}}>
+            <div className="cg" style={{minWidth:140}}>
+              <label style={{fontSize:10}}>Sector</label>
+              <select value={filters.sector||""} onChange={e=>setF("sector",e.target.value)} style={{fontSize:12,padding:"4px 6px"}}>
+                <option value="">All Sectors</option>
+                {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="cg">
+              <label style={{fontSize:10}}>Mkt Cap Min</label>
+              <select value={filters.market_cap_min||""} onChange={e=>setF("market_cap_min",e.target.value ? Number(e.target.value) : "")} style={{fontSize:12,padding:"4px 6px",width:90}}>
+                <option value="">Any</option>
+                <option value={1e8}>$100M+</option>
+                <option value={1e9}>$1B+</option>
+                <option value={1e10}>$10B+</option>
+                <option value={1e11}>$100B+</option>
+              </select>
+            </div>
+            <div className="cg">
+              <label style={{fontSize:10}}>Recovery Max (yrs)</label>
+              <input type="number" value={filters.recovery_max!=null?filters.recovery_max:""} onChange={e=>setF("recovery_max",e.target.value!==""?Number(e.target.value):null)} placeholder="e.g. 5" step={0.5} style={{width:70,fontSize:12,padding:"4px 6px"}}/>
+            </div>
+            <div className="cg">
+              <label style={{fontSize:10}}>Avg Yr Min (%)</label>
+              <input type="number" value={filters.avg_yr_min!=null?filters.avg_yr_min:""} onChange={e=>setF("avg_yr_min",e.target.value!==""?Number(e.target.value):null)} placeholder="e.g. 10" step={5} style={{width:70,fontSize:12,padding:"4px 6px"}}/>
+            </div>
+            <div className="cg">
+              <label style={{fontSize:10}}>Last Yr Min (%)</label>
+              <input type="number" value={filters.last_yr_min!=null?filters.last_yr_min:""} onChange={e=>setF("last_yr_min",e.target.value!==""?Number(e.target.value):null)} placeholder="e.g. 10" step={5} style={{width:70,fontSize:12,padding:"4px 6px"}}/>
+            </div>
+          </div>
+        )}
 
         <SummaryTable tickers={pageItems} onSelect={onSelect} sortCfg={sortCfg} onSort={handleSort}/>
 
