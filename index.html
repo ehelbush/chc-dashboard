@@ -614,6 +614,236 @@ function TickerDetail({data,onBack}) {
 }
 
 
+// ── Portfolio Builder ────────────────────────────────────────────────────
+
+function PortfolioBuilder({screenerData}) {
+  const [constraints, setConstraints] = useState({
+    maxAssets: 10, recoveryMax: 5, marketCapMin: 1e9, avgYrMin: 0, sector: "", signalFilter: "buy", rankBy: "av_yrly_return",
+  });
+  const [portfolio, setPortfolio] = useState(null);
+  const [building, setBuilding] = useState(false);
+  const [progress, setProgress] = useState("");
+  const setC = (k, v) => setConstraints(prev => ({...prev, [k]: v}));
+
+  const sectors = screenerData && screenerData.results
+    ? [...new Set(screenerData.results.map(t => t.sector).filter(Boolean))].sort() : [];
+
+  const buildPortfolio = async () => {
+    if (!screenerData || !screenerData.results) return;
+    setBuilding(true);
+    setPortfolio(null);
+
+    // 1. Filter candidates
+    let candidates = screenerData.results.filter(t => {
+      if (t.recovery_period == null || t.recovery_period >= 999) return false;
+      if (constraints.recoveryMax && t.recovery_period > constraints.recoveryMax) return false;
+      if (constraints.marketCapMin && (t.market_cap || 0) < constraints.marketCapMin) return false;
+      if (constraints.avgYrMin && (t.av_yrly_return || 0) < constraints.avgYrMin / 100) return false;
+      if (constraints.sector && t.sector !== constraints.sector) return false;
+      if (constraints.signalFilter === "buy" && t.buy_sell_call !== "Buy") return false;
+      return true;
+    });
+
+    // 2. Sort by ranking metric and take top N
+    const rankKey = constraints.rankBy;
+    candidates.sort((a, b) => (b[rankKey] || 0) - (a[rankKey] || 0));
+    const selected = candidates.slice(0, constraints.maxAssets);
+
+    if (selected.length === 0) {
+      setProgress("No tickers match your constraints. Try relaxing the filters.");
+      setBuilding(false);
+      return;
+    }
+
+    const weight = 1 / selected.length;
+
+    // 3. Fetch price history for each ticker + SPY
+    const priceData = {};
+    const syms = [...selected.map(t => t.ticker), "SPY"];
+    for (let i = 0; i < syms.length; i++) {
+      const sym = syms[i];
+      setProgress("Fetching price data: " + (i + 1) + "/" + syms.length + " (" + sym + ")...");
+      try {
+        const d = await fetchYahooData(sym, 6);
+        if (d && d.dates && d.dates.length > 100) {
+          priceData[sym] = {dates: d.dates, closes: d.closes};
+        }
+      } catch (e) { /* skip */ }
+    }
+
+    // 4. Align dates — find common date set
+    const dateSets = Object.values(priceData).map(d => new Set(d.dates));
+    if (dateSets.length === 0) {
+      setProgress("Could not fetch price data. Try again.");
+      setBuilding(false);
+      return;
+    }
+    let commonDates = dateSets[0];
+    for (let i = 1; i < dateSets.length; i++) {
+      commonDates = new Set([...commonDates].filter(d => dateSets[i].has(d)));
+    }
+    const sortedDates = [...commonDates].sort();
+    if (sortedDates.length === 0) {
+      setProgress("No overlapping dates found for selected tickers.");
+      setBuilding(false);
+      return;
+    }
+
+    // 5. Build price lookup and compute portfolio
+    const initBalance = 100000;
+    const chartData = [];
+    let portPeak = initBalance;
+    let portMaxDD = 0;
+    let spyPeak = initBalance;
+    let spyMaxDD = 0;
+
+    // Get start prices for normalization
+    const startPrices = {};
+    for (const sym of Object.keys(priceData)) {
+      const idx = priceData[sym].dates.indexOf(sortedDates[0]);
+      startPrices[sym] = idx >= 0 ? priceData[sym].closes[idx] : 1;
+    }
+
+    for (const date of sortedDates) {
+      // Portfolio value: equal-weight sum of normalized returns
+      let portValue = 0;
+      let validCount = 0;
+      for (const t of selected) {
+        const sym = t.ticker;
+        if (!priceData[sym]) continue;
+        const idx = priceData[sym].dates.indexOf(date);
+        if (idx < 0) continue;
+        const ret = priceData[sym].closes[idx] / startPrices[sym];
+        portValue += ret * weight;
+        validCount++;
+      }
+      if (validCount > 0) portValue = portValue * initBalance;
+      else portValue = chartData.length > 0 ? chartData[chartData.length - 1].portfolio : initBalance;
+
+      // SPY value
+      let spyValue = initBalance;
+      if (priceData["SPY"]) {
+        const idx = priceData["SPY"].dates.indexOf(date);
+        if (idx >= 0) spyValue = (priceData["SPY"].closes[idx] / startPrices["SPY"]) * initBalance;
+      }
+
+      portPeak = Math.max(portPeak, portValue);
+      spyPeak = Math.max(spyPeak, spyValue);
+      portMaxDD = Math.min(portMaxDD, (portValue / portPeak) - 1);
+      spyMaxDD = Math.min(spyMaxDD, (spyValue / spyPeak) - 1);
+
+      chartData.push({date, portfolio: Math.round(portValue), spy: Math.round(spyValue)});
+    }
+
+    // 6. Compute metrics
+    const years = sortedDates.length / 252;
+    const finalPort = chartData[chartData.length - 1].portfolio;
+    const finalSpy = chartData[chartData.length - 1].spy;
+    const portAnn = years > 0 ? Math.pow(finalPort / initBalance, 1 / years) - 1 : 0;
+    const spyAnn = years > 0 ? Math.pow(finalSpy / initBalance, 1 / years) - 1 : 0;
+    const portRecovery = portMaxDD < 0 && portAnn > 0 ? -2 * Math.log(1 + portMaxDD) / Math.log(1 + portAnn) : 0;
+
+    // Downsample chart for performance
+    const step = Math.max(1, Math.floor(chartData.length / 500));
+    const downsampled = chartData.filter((_, i) => i % step === 0 || i === chartData.length - 1);
+
+    setPortfolio({
+      selected: selected.map(t => ({...t, weight: Math.round(weight * 10000) / 100})),
+      metrics: {portAnn, spyAnn, portMaxDD, spyMaxDD, portRecovery, years: years.toFixed(1), dataPoints: sortedDates.length},
+      chartData: downsampled,
+    });
+    setProgress("");
+    setBuilding(false);
+  };
+
+  return (
+    <div>
+      <div className="card" style={{padding:"16px 20px"}}>
+        <div className="card-title" style={{marginBottom:12}}>Portfolio Builder</div>
+        <div style={{fontSize:12,color:"var(--text2)",marginBottom:16}}>Auto-select optimal buy-and-hold portfolio from {screenerData ? screenerData.total_tickers.toLocaleString() : "..."} screener tickers</div>
+        <div className="controls" style={{flexWrap:"wrap",gap:12}}>
+          <div className="cg"><label style={{fontSize:10}}>Max Assets</label>
+            <select value={constraints.maxAssets} onChange={e => setC("maxAssets", Number(e.target.value))} style={{width:70}}>
+              <option value={5}>5</option><option value={10}>10</option><option value={15}>15</option><option value={20}>20</option>
+            </select>
+          </div>
+          <div className="cg"><label style={{fontSize:10}}>Max Recovery (yrs)</label>
+            <input type="number" value={constraints.recoveryMax} onChange={e => setC("recoveryMax", Number(e.target.value))} step={0.5} style={{width:70,fontSize:12}}/>
+          </div>
+          <div className="cg"><label style={{fontSize:10}}>Min Market Cap</label>
+            <select value={constraints.marketCapMin} onChange={e => setC("marketCapMin", Number(e.target.value))} style={{width:90,fontSize:12}}>
+              <option value={0}>Any</option><option value={1e8}>$100M+</option><option value={1e9}>$1B+</option><option value={1e10}>$10B+</option><option value={1e11}>$100B+</option>
+            </select>
+          </div>
+          <div className="cg"><label style={{fontSize:10}}>Min Avg Yr (%)</label>
+            <input type="number" value={constraints.avgYrMin} onChange={e => setC("avgYrMin", Number(e.target.value))} step={5} style={{width:60,fontSize:12}}/>
+          </div>
+          <div className="cg"><label style={{fontSize:10}}>Sector</label>
+            <select value={constraints.sector} onChange={e => setC("sector", e.target.value)} style={{width:130,fontSize:12}}>
+              <option value="">All Sectors</option>
+              {sectors.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div className="cg"><label style={{fontSize:10}}>Signal</label>
+            <select value={constraints.signalFilter} onChange={e => setC("signalFilter", e.target.value)} style={{width:80,fontSize:12}}>
+              <option value="buy">Buy Only</option><option value="all">All</option>
+            </select>
+          </div>
+          <div className="cg"><label style={{fontSize:10}}>Rank By</label>
+            <select value={constraints.rankBy} onChange={e => setC("rankBy", e.target.value)} style={{width:110,fontSize:12}}>
+              <option value="av_yrly_return">Avg Yr Return</option><option value="est_next_yr_return">Est Next Yr</option><option value="last_yr_return">Last Yr Return</option>
+            </select>
+          </div>
+          <button onClick={buildPortfolio} disabled={building || !screenerData}>{building ? "Building..." : "Build Portfolio"}</button>
+        </div>
+        {progress && <div style={{marginTop:12,fontSize:12,color:"var(--blue)"}}>{progress}</div>}
+      </div>
+
+      {portfolio && (
+        <div>
+          <div className="metrics-grid" style={{marginTop:16}}>
+            <div className="metric-card"><div className="metric-label">Portfolio Annualized</div><div className="metric-value pos">{(portfolio.metrics.portAnn * 100).toFixed(1)}%</div><div className="metric-sub">{portfolio.metrics.years}yr backtest ({portfolio.metrics.dataPoints} days)</div></div>
+            <div className="metric-card"><div className="metric-label">S&P 500 Annualized</div><div className="metric-value" style={{color:"var(--blue)"}}>{(portfolio.metrics.spyAnn * 100).toFixed(1)}%</div><div className="metric-sub">Same period benchmark</div></div>
+            <div className="metric-card"><div className="metric-label">Max Drawdown</div><div className="metric-value neg">{(portfolio.metrics.portMaxDD * 100).toFixed(1)}%</div><div className="metric-sub">SPY: {(portfolio.metrics.spyMaxDD * 100).toFixed(1)}%</div></div>
+            <div className="metric-card"><div className="metric-label">Recovery Period</div><div className="metric-value" style={{color:portfolio.metrics.portRecovery > 5 ? "var(--red)" : "var(--green)"}}>{portfolio.metrics.portRecovery.toFixed(1)} yrs</div><div className="metric-sub">{portfolio.selected.length} assets, equal weight</div></div>
+          </div>
+
+          <div className="card" style={{marginTop:16}}>
+            <div className="card-title">Backtest: Growth of $100K (Buy & Hold)</div>
+            <Chart data={portfolio.chartData} height={350} xKey="date"
+              lines={[
+                {key:"portfolio", color:"#22c55e", label:"Portfolio (" + (portfolio.metrics.portAnn * 100).toFixed(1) + "% ann.)", width:2.5},
+                {key:"spy", color:"#3b82f6", label:"S&P 500 (" + (portfolio.metrics.spyAnn * 100).toFixed(1) + "% ann.)", width:1.5, opacity:0.7},
+              ]}
+            />
+          </div>
+
+          <div className="card" style={{marginTop:16,padding:"16px 20px"}}>
+            <div className="card-title" style={{marginBottom:12}}>Selected Assets ({portfolio.selected.length})</div>
+            <div className="table-wrap"><table><thead><tr>
+              <th>Ticker</th><th>Sector</th><th>Mkt Cap</th><th>Weight</th>
+              <th>Avg Yr</th><th>Last Yr</th><th>Recovery</th><th>Stat3 Loss</th>
+            </tr></thead><tbody>
+              {portfolio.selected.map(t => (
+                <tr key={t.ticker}>
+                  <td className="tc">{t.ticker}</td>
+                  <td style={{color:"var(--text2)",fontSize:11}}>{t.sector || "\u2014"}</td>
+                  <td style={{color:"var(--text2)",fontSize:12}}>{fmtCap(t.market_cap)}</td>
+                  <td style={{fontWeight:600}}>{t.weight.toFixed(1)}%</td>
+                  <td className={pc(t.av_yrly_return)}>{pct(t.av_yrly_return)}</td>
+                  <td className={pc(t.last_yr_return)}>{pct(t.last_yr_return)}</td>
+                  <td className={rc(t.recovery_period)}>{t.recovery_period.toFixed(1)}</td>
+                  <td className="neg">{pct(t.stat3_loss)}</td>
+                </tr>
+              ))}
+            </tbody></table></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Market Screener ──────────────────────────────────────────────────────
 
 function MarketScreener({onSelect}) {
@@ -1673,6 +1903,7 @@ function App() {
         <div className={"nav-tab"+(page==="account"&&view!=="detail"?" active":"")} onClick={()=>{setPage("account");setView("dashboard");}}>Performance</div>
         <div className={"nav-tab"+(page==="portfolio"&&view!=="detail"?" active":"")} onClick={()=>{setPage("portfolio");setView("dashboard");}}>Select Assets</div>
         <div className={"nav-tab"+(page==="screener"&&view!=="detail"?" active":"")} onClick={()=>{setPage("screener");setView("dashboard");}}>Asset Screener</div>
+        <div className={"nav-tab"+(page==="builder"?" active":"")} onClick={()=>{setPage("builder");setView("dashboard");}}>Portfolio Builder</div>
         <div className={"nav-tab"+(page==="definitions"?" active":"")} onClick={()=>{setPage("definitions");setView("dashboard");}}>Definitions</div>
         <div className={"nav-tab"+(page==="changelog"?" active":"")} onClick={()=>{setPage("changelog");setView("dashboard");}}>Changelog</div>
       </div>
@@ -1724,6 +1955,10 @@ function App() {
 
       {view==="dashboard"&&page==="screener"&&(
         <MarketScreener onSelect={handleSelect}/>
+      )}
+
+      {view==="dashboard"&&page==="builder"&&(
+        <PortfolioBuilder screenerData={screenerData}/>
       )}
 
       {view==="dashboard"&&page==="definitions"&&(
