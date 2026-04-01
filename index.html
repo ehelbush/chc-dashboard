@@ -1568,13 +1568,14 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.2.5</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.3.0</span></div>
       </div>
 
       <div className="nav-tabs">
         <div className={"nav-tab"+(page==="portfolio"&&view!=="detail"?" active":"")} onClick={()=>{setPage("portfolio");setView("dashboard");}}>Portfolio</div>
         <div className={"nav-tab"+(page==="account"&&view!=="detail"?" active":"")} onClick={()=>{setPage("account");setView("dashboard");}}>Account</div>
         <div className={"nav-tab"+(page==="screener"&&view!=="detail"?" active":"")} onClick={()=>{setPage("screener");setView("dashboard");}}>Market Screener</div>
+        <div className={"nav-tab"+(page==="changelog"?" active":"")} onClick={()=>{setPage("changelog");setView("dashboard");}}>Changelog</div>
       </div>
 
       <div className="card">
@@ -1621,6 +1622,57 @@ function App() {
 
       {view==="dashboard"&&page==="screener"&&(
         <MarketScreener onSelect={handleSelect}/>
+      )}
+
+      {view==="dashboard"&&page==="changelog"&&(
+        <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
+          <div className="card-title" style={{marginBottom:16}}>Changelog</div>
+          {[
+            {ver:"v4.3.0",date:"2026-03-30",items:[
+              "Per-asset model parameters — each of 25 portfolio tickers now uses its own tuned vol_flag, price_flag, vol_price_mix, and buy/sell thresholds (extracted from Excel models)",
+              "Expanded analysis ribbon with Vol Flag, Price Flag, Buy Threshold, Sell Threshold inputs",
+              "Auto-loads saved params when selecting a portfolio ticker",
+              "Market cap column added to Portfolio screener and Account holdings tables",
+              "Strategy Performance card showing per-era returns (Manual Timing, Auto Timing, Manual Recovery) with SPY Delta",
+              "Era shading on CHC Share Price chart with colored background bands",
+              "Daily Schwab sync with automatic backfill for missed trading days",
+              "GitHub Actions workflow now runs Schwab sync + market screener daily",
+            ]},
+            {ver:"v4.2.5",date:"2026-03-26",items:[
+              "CHC Share Price chart using NAV-per-share index with annualized returns",
+              "Account Balance chart with time range toggles (1M/3M/6M/YTD/1Y/3Y/5Y/ALL)",
+              "Drawdown chart comparing CHC vs S&P 500",
+              "Monthly returns heatmap going back to 2019",
+              "Schwab API integration — live account data, holdings, sector allocation",
+              "Portfolio history backfilled from Schwab balance CSV and share price spreadsheet",
+              "Recent trades display with actual symbols (fixed CURRENCY_USD issue)",
+              "Responsive charts that fill card width",
+            ]},
+            {ver:"v4.2.0",date:"2026-03-19",items:[
+              "Market Screener with 6,006 NYSE/NASDAQ tickers",
+              "Daily GitHub Actions workflow to auto-update screener data",
+              "Vercel serverless API for live Yahoo Finance data (no CORS issues)",
+              "Live data fetching with fallback to pre-loaded local data",
+            ]},
+            {ver:"v4.1.0",date:"2026-03-18",items:[
+              "Initial dashboard launch with Portfolio tab",
+              "CHC Trading Model ported from Excel to JavaScript",
+              "25 pre-loaded portfolio tickers with full price/volume history",
+              "Growth of $100K chart — trading vs buy & hold",
+              "Sortable metrics table with signal, strength, returns, losses, recovery period",
+            ]},
+          ].map(release => (
+            <div key={release.ver} style={{marginBottom:24}}>
+              <div style={{display:"flex",alignItems:"baseline",gap:12,marginBottom:8}}>
+                <span className="badge badge-blue">{release.ver}</span>
+                <span style={{color:"var(--text2)",fontSize:13}}>{release.date}</span>
+              </div>
+              <ul style={{margin:0,paddingLeft:20,color:"var(--text2)",fontSize:13,lineHeight:1.8}}>
+                {release.items.map((item,i) => <li key={i} style={{color:"var(--text)"}}>{item}</li>)}
+              </ul>
+            </div>
+          ))}
+        </div>
       )}
 
       {view==="detail"&&(analyzing
