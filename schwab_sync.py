@@ -655,6 +655,23 @@ def sync_all(app_key, app_secret):
             for sym, q in quotes.items() if isinstance(q, dict)
         }
 
+    # 3b. Fetch market cap from Yahoo Finance (not available in Schwab API)
+    print(f"  Fetching market cap for {len(all_symbols)} symbols...")
+    try:
+        import yfinance as yf
+        for sym in all_symbols:
+            try:
+                mc = yf.Ticker(sym).fast_info.market_cap
+                if mc and mc > 0:
+                    for acct in cache["accounts"]:
+                        for h in acct.get("holdings", []):
+                            if h["symbol"] == sym:
+                                h["market_cap"] = mc
+            except Exception:
+                pass
+    except ImportError:
+        print("  [!] yfinance not installed — skipping market cap")
+
     # 4. Fetch benchmarks
     print("  Fetching benchmark data...")
     benchmarks = compute_benchmarks(access_token, list(all_symbols), {})

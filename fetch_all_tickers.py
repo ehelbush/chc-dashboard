@@ -297,6 +297,10 @@ def main():
                 continue
 
             result["ticker"] = sym
+            try:
+                result["market_cap"] = tk.fast_info.market_cap
+            except Exception:
+                result["market_cap"] = None
             results.append(result)
 
         except Exception as e:
