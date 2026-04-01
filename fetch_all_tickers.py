@@ -267,6 +267,14 @@ def main():
                 existing = {r["ticker"]: r for r in data.get("results", [])}
                 print(f"Resuming — {len(existing)} tickers already done today")
 
+    # Load per-asset params for portfolio tickers
+    params_path = os.path.join(os.path.dirname(__file__), 'data', 'ticker_params.json')
+    ticker_params = {}
+    if os.path.exists(params_path):
+        with open(params_path) as f:
+            ticker_params = json.load(f)
+        print(f"Loaded saved params for {len(ticker_params)} portfolio tickers")
+
     print("Getting ticker list...")
     all_tickers = get_all_tickers()
     print(f"Found {len(all_tickers)} tickers to process")
@@ -293,7 +301,15 @@ def main():
             closes = hist['Close'].tolist()
             volumes = hist['Volume'].astype(int).tolist()
 
-            result = compute_chc_model(dates, closes, volumes)
+            # Use saved per-asset params for portfolio tickers, defaults for others
+            tp = ticker_params.get(sym, {})
+            result = compute_chc_model(dates, closes, volumes,
+                vol_flag=tp.get("vol_flag", 2),
+                price_flag=tp.get("price_flag", 1),
+                vol_price_mix=tp.get("vol_price_mix", 0.72),
+                buy_threshold=tp.get("buy_threshold", 0.0012),
+                sell_threshold=tp.get("sell_threshold", -0.0012),
+            )
             if result is None:
                 errors += 1
                 continue
