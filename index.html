@@ -474,8 +474,8 @@ function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
   return (
     <div className="table-wrap"><table><thead><tr>
       <SH label="Ticker" field="ticker"/><SH label="Signal" field="buy_sell_call"/>
-      <SH label="Strength" field="call_strength"/><SH label="Mkt Cap" field="market_cap"/>
-      <SH label="Last Yr" field="last_yr_return"/>
+      <SH label="Strength" field="call_strength"/><SH label="Sector" field="sector"/>
+      <SH label="Mkt Cap" field="market_cap"/><SH label="Last Yr" field="last_yr_return"/>
       <SH label="Avg Yr" field="av_yrly_return"/><SH label="Est Next Yr" field="est_next_yr_return"/>
       <SH label="Current Loss" field="current_loss"/><SH label="Stat3 Loss" field="stat3_loss"/>
       <SH label="Recovery (yrs)" field="recovery_period"/>
@@ -485,6 +485,7 @@ function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
           <td className="tc">{t.ticker}</td>
           <td className={t.buy_sell_call==="Buy"?"buy":"sell"}>{t.buy_sell_call}</td>
           <td><StrengthBar value={t.call_strength}/></td>
+          <td style={{color:"var(--text2)",fontSize:11,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.sector||"\u2014"}</td>
           <td style={{color:"var(--text2)",fontSize:12}}>{fmtCap(t.market_cap)}</td>
           <td className={pc(t.last_yr_return)}>{pct(t.last_yr_return)}</td>
           <td className={pc(t.av_yrly_return)}>{pct(t.av_yrly_return)}</td>
@@ -1350,8 +1351,8 @@ function SchwabAccount({onAnalyzeTicker}) {
           <table>
             <thead><tr>
               {[
-                {label:"Symbol",field:"symbol"},{label:"Name",field:"name"},{label:"Mkt Cap",field:"market_cap"},
-                {label:"Qty",field:"quantity"},
+                {label:"Symbol",field:"symbol"},{label:"Name",field:"name"},{label:"Sector",field:"sector"},
+                {label:"Mkt Cap",field:"market_cap"},{label:"Qty",field:"quantity"},
                 {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},
                 {label:"Mkt Value",field:"market_value"},{label:"Total Gain",field:"total_gain"},
                 {label:"Gain %",field:"total_gain_pct"},{label:"Day %",field:"day_gain_pct"}
@@ -1366,6 +1367,7 @@ function SchwabAccount({onAnalyzeTicker}) {
                 <tr key={h.symbol} onClick={()=>onAnalyzeTicker && onAnalyzeTicker(h.symbol)} style={{cursor:"pointer"}}>
                   <td className="tc">{h.symbol}</td>
                   <td style={{maxWidth:200,overflow:"hidden",textOverflow:"ellipsis"}}>{h.name}</td>
+                  <td style={{color:"var(--text2)",fontSize:11}}>{h.sector||"\u2014"}</td>
                   <td style={{color:"var(--text2)",fontSize:12}}>{fmtCap(h.market_cap)}</td>
                   <td>{h.quantity.toLocaleString("en-US",{maximumFractionDigits:2})}</td>
                   <td>${h.avg_cost.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>

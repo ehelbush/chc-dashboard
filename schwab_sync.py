@@ -655,22 +655,30 @@ def sync_all(app_key, app_secret):
             for sym, q in quotes.items() if isinstance(q, dict)
         }
 
-    # 3b. Fetch market cap from Yahoo Finance (not available in Schwab API)
-    print(f"  Fetching market cap for {len(all_symbols)} symbols...")
+    # 3b. Fetch market cap + sector/industry from Yahoo Finance (not available in Schwab API)
+    print(f"  Fetching market cap & sector for {len(all_symbols)} symbols...")
     try:
         import yfinance as yf
         for sym in all_symbols:
             try:
-                mc = yf.Ticker(sym).fast_info.market_cap
-                if mc and mc > 0:
-                    for acct in cache["accounts"]:
-                        for h in acct.get("holdings", []):
-                            if h["symbol"] == sym:
+                tk = yf.Ticker(sym)
+                mc = tk.fast_info.market_cap
+                info = tk.info
+                sector = info.get("sector", "")
+                industry = info.get("industry", "")
+                for acct in cache["accounts"]:
+                    for h in acct.get("holdings", []):
+                        if h["symbol"] == sym:
+                            if mc and mc > 0:
                                 h["market_cap"] = mc
+                            if sector:
+                                h["sector"] = sector
+                            if industry:
+                                h["industry"] = industry
             except Exception:
                 pass
     except ImportError:
-        print("  [!] yfinance not installed — skipping market cap")
+        print("  [!] yfinance not installed — skipping market cap/sector")
 
     # 4. Fetch benchmarks
     print("  Fetching benchmark data...")

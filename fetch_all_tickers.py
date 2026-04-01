@@ -301,6 +301,13 @@ def main():
                 result["market_cap"] = tk.fast_info.market_cap
             except Exception:
                 result["market_cap"] = None
+            try:
+                info = tk.info
+                result["sector"] = info.get("sector", "")
+                result["industry"] = info.get("industry", "")
+            except Exception:
+                result["sector"] = ""
+                result["industry"] = ""
             results.append(result)
 
         except Exception as e:
