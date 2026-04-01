@@ -146,6 +146,9 @@ const DEFINITIONS = [
   ["Max Loss", "The worst peak-to-trough drawdown observed during the evaluation period. Can be misleading if it reflects a single extreme event rather than typical behavior (see Stat3 Loss)."],
   ["Recovery Period", "Estimated years to recover from the maximum loss, given the average yearly return. Formula: -2 x ln(1 + maxLoss) / ln(1 + avgYearlyReturn). Lower is better. 'Never' means the average return is negative, so the asset cannot mathematically recover."],
   ["Market Cap", "Total market capitalization (share price x shares outstanding). Useful for filtering out micro-cap / penny stocks susceptible to pump-and-dump. Sourced from Yahoo Finance."],
+  ["Optimizer (Two-Stage Search)", "The parameter optimizer uses a two-pass grid search. Stage 1 does a coarse sweep across wide ranges (thresholds -0.1 to +0.1, mix 0-1 in 0.1 steps, all vol/price flag combos). Stage 2 takes the top 10 results and refines with a tight grid around each (threshold \u00B10.01 in 0.0005 steps, mix \u00B10.1 in 0.02 steps). Total ~11,000 evaluations covering a 10\u00D7 wider search space than single-pass."],
+  ["Train/Test Split", "The optimizer splits the evaluation period 80/20. Parameters are optimized on the first 80% of data (training set) and then evaluated on the remaining 20% (test set). If the test return is far below the training return, the parameters may be overfit to historical noise. Both metrics are reported in the result line."],
+  ["Max Recovery Constraint", "An optimizer input (default 5 years) that filters candidate parameter sets. Only combinations whose estimated recovery period is at or below this limit are considered. If none pass, the optimizer falls back to all results with positive recovery. Tighter values (e.g. 3 years) favor conservative, low-drawdown configurations; looser values allow higher-return / higher-risk configurations."],
 ];
 
 // ── CHC Trading Model (JavaScript port) ─────────────────────────────────────
@@ -1778,6 +1781,7 @@ function App() {
   const [tickerParams, setTickerParams] = useState(null);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeResult, setOptimizeResult] = useState("");
+  const [maxRecovery, setMaxRecovery] = useState(5);
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
   // Load local ticker data + screener data
@@ -1907,41 +1911,107 @@ function App() {
     else if (localData && localData[s]) { dates = localData[s].d; closes = localData[s].c; volumes = localData[s].v; }
     if (!dates) { setError("No data for " + s); setOptimizing(false); return; }
 
-    // Grid search
-    const results = [];
+    // Train/test split: optimize on first 80%, validate on last 20%
+    const evalDays = years * 252;
+    const totalDays = dates.length;
+    const startIdx = totalDays > evalDays ? totalDays - evalDays : 0;
+    const evalLen = totalDays - startIdx;
+    const splitIdx = startIdx + Math.floor(evalLen * 0.8);
+    const trainDates = dates.slice(0, splitIdx);
+    const trainCloses = closes.slice(0, splitIdx);
+    const trainVolumes = volumes.slice(0, splitIdx);
+    const trainYears = Math.max(1, Math.round((trainDates.length - startIdx) / 252));
+
+    // Helper to run model on a data subset
+    const evalParams = (d, c, v, yr, vf, pf, mx, th) => {
+      const r = computeCHCModel(d, c, v, {
+        evalYears: yr, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th,
+      });
+      if (r && !r.error && r.trading) {
+        return { ret: r.trading.avg_yr_return || 0, rec: r.trading.recovery_period || 0 };
+      }
+      return null;
+    };
+
+    // ── Stage 1: Coarse grid search on TRAINING data ──
+    setOptimizeResult("Stage 1: Coarse search...");
+    await new Promise(ok => setTimeout(ok, 0));
+    const coarseResults = [];
     const vFlags = [0, 1, 2, 3];
     const pFlags = [0, 1, 2, 3];
-    const mixes = []; for (let m = 0; m <= 1.001; m += 0.05) mixes.push(Math.round(m * 100) / 100);
-    const thresholds = []; for (let t = -0.02; t <= 0.0201; t += 0.001) thresholds.push(Math.round(t * 10000) / 10000);
-    const total = vFlags.length * pFlags.length * mixes.length * thresholds.length;
+    const coarseMixes = []; for (let m = 0; m <= 1.001; m += 0.1) coarseMixes.push(Math.round(m * 100) / 100);
+    const coarseThresholds = []; for (let t = -0.1; t <= 0.1001; t += 0.005) coarseThresholds.push(Math.round(t * 10000) / 10000);
+    const coarseTotal = vFlags.length * pFlags.length * coarseMixes.length * coarseThresholds.length;
     let count = 0;
 
     for (const vf of vFlags) {
       for (const pf of pFlags) {
-        for (const mx of mixes) {
-          for (const th of thresholds) {
-            const r = computeCHCModel(dates, closes, volumes, {
-              evalYears: years, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th,
-            });
-            if (r && !r.error && r.trading) {
-              const rec = r.trading.recovery_period || 0;
-              const ret = r.trading.avg_yr_return || 0;
-              results.push({vf, pf, mx, th, ret, rec});
-            }
+        for (const mx of coarseMixes) {
+          for (const th of coarseThresholds) {
+            const m = evalParams(trainDates, trainCloses, trainVolumes, trainYears, vf, pf, mx, th);
+            if (m) coarseResults.push({vf, pf, mx, th, ...m});
             count++;
           }
         }
       }
-      setOptimizeResult("Optimizing... " + Math.round(count / total * 100) + "%");
-      await new Promise(ok => setTimeout(ok, 0)); // yield to UI
+      setOptimizeResult("Stage 1: " + Math.round(count / coarseTotal * 100) + "%");
+      await new Promise(ok => setTimeout(ok, 0));
     }
 
-    // Two-pass: filter recovery under 5y, then max return
-    let candidates = results.filter(r => r.rec > 0 && r.rec <= 5);
-    if (candidates.length === 0) candidates = results.filter(r => r.rec > 0);
-    if (candidates.length === 0) { setOptimizeResult("No valid params found"); setOptimizing(false); return; }
-    candidates.sort((a, b) => b.ret - a.ret);
-    const best = candidates[0];
+    // Filter by recovery constraint, pick top 10 for refinement
+    const recLimit = maxRecovery || 5;
+    let coarseCandidates = coarseResults.filter(r => r.rec > 0 && r.rec <= recLimit);
+    if (coarseCandidates.length === 0) coarseCandidates = coarseResults.filter(r => r.rec > 0);
+    if (coarseCandidates.length === 0) { setOptimizeResult("No valid params found"); setOptimizing(false); return; }
+    coarseCandidates.sort((a, b) => b.ret - a.ret);
+    const top10 = coarseCandidates.slice(0, 10);
+
+    // ── Stage 2: Fine grid search around top 10 on TRAINING data ──
+    setOptimizeResult("Stage 2: Fine search around top 10...");
+    await new Promise(ok => setTimeout(ok, 0));
+    const fineResults = [];
+    let fineCount = 0;
+    const seen = new Set();
+
+    for (const seed of top10) {
+      const fineMixes = [];
+      for (let m = Math.max(0, seed.mx - 0.1); m <= Math.min(1, seed.mx + 0.1) + 0.001; m += 0.02)
+        fineMixes.push(Math.round(m * 100) / 100);
+      const fineThresholds = [];
+      for (let t = seed.th - 0.01; t <= seed.th + 0.01 + 0.00001; t += 0.0005)
+        fineThresholds.push(Math.round(t * 10000) / 10000);
+
+      for (const vf of [seed.vf]) {
+        for (const pf of [seed.pf]) {
+          for (const mx of fineMixes) {
+            for (const th of fineThresholds) {
+              const key = vf + "," + pf + "," + mx + "," + th;
+              if (seen.has(key)) continue;
+              seen.add(key);
+              const m = evalParams(trainDates, trainCloses, trainVolumes, trainYears, vf, pf, mx, th);
+              if (m) fineResults.push({vf, pf, mx, th, ...m});
+              fineCount++;
+            }
+          }
+        }
+      }
+      setOptimizeResult("Stage 2: refining seed " + (top10.indexOf(seed) + 1) + "/10...");
+      await new Promise(ok => setTimeout(ok, 0));
+    }
+
+    // Merge coarse + fine results, pick best on training data
+    const allResults = [...coarseResults, ...fineResults];
+    let allCandidates = allResults.filter(r => r.rec > 0 && r.rec <= recLimit);
+    if (allCandidates.length === 0) allCandidates = allResults.filter(r => r.rec > 0);
+    if (allCandidates.length === 0) { setOptimizeResult("No valid params found"); setOptimizing(false); return; }
+    allCandidates.sort((a, b) => b.ret - a.ret);
+    const best = allCandidates[0];
+
+    // ── Evaluate best params on FULL data (in-sample) and TEST data (out-of-sample) ──
+    const fullResult = evalParams(dates, closes, volumes, years, best.vf, best.pf, best.mx, best.th);
+    const testYears = Math.max(1, Math.round((dates.length - splitIdx) / 252));
+    const testResult = evalParams(dates, closes, volumes, testYears, best.vf, best.pf, best.mx, best.th);
+    const totalCombos = coarseResults.length + fineResults.length;
 
     // Apply best params
     setVolFlag(best.vf);
@@ -1949,10 +2019,30 @@ function App() {
     setMix(best.mx);
     setBuyThreshold(best.th);
     setSellThreshold(best.th);
-    setOptimizeResult("Best: " + (best.ret * 100).toFixed(1) + "% ann. / " + best.rec.toFixed(1) + "yr recovery (from " + results.length.toLocaleString() + " combos)");
+
+    const trainStr = (best.ret * 100).toFixed(1) + "% / " + best.rec.toFixed(1) + "yr";
+    const testStr = testResult ? (testResult.ret * 100).toFixed(1) + "% / " + testResult.rec.toFixed(1) + "yr" : "N/A";
+    setOptimizeResult(
+      "Train: " + trainStr + " | Test: " + testStr +
+      " (" + totalCombos.toLocaleString() + " combos, 2-stage)"
+    );
+
+    // Store optimization metadata for param history
+    const now = new Date().toISOString();
+    const prevParams = tickerParams && tickerParams[s] ? {...tickerParams[s]} : null;
+    const optimizedEntry = {
+      vol_flag: best.vf, price_flag: best.pf, vol_price_mix: best.mx,
+      buy_threshold: best.th, sell_threshold: best.th,
+      last_optimized: now,
+      prev_params: prevParams,
+      train_metrics: { avg_yr_return: best.ret, recovery_period: best.rec },
+      test_metrics: testResult ? { avg_yr_return: testResult.ret, recovery_period: testResult.rec } : null,
+    };
+    setTickerParams(prev => ({...prev, [s]: {...(prev && prev[s] || {}), ...optimizedEntry}}));
+
     setOptimizing(false);
 
-    // Run analysis with optimal params
+    // Run analysis with optimal params on full data
     analyzeTicker(s, years, best.mx, {volFlag: best.vf, priceFlag: best.pf, buyThreshold: best.th, sellThreshold: best.th});
   };
 
@@ -1962,7 +2052,7 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.3.0</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.4.0</span></div>
       </div>
 
       <div className="nav-tabs">
@@ -1999,6 +2089,7 @@ function App() {
               </div>
               <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
               <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
+              <div className="cg"><label>Max Recovery (yrs)</label><input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:80}}/></div>
               <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
               <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{optimizing?"Optimizing...":"Optimize"}</button>
               {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
@@ -2007,6 +2098,49 @@ function App() {
             </div>
             {error&&<div className="error-msg">{error}</div>}
           </div>
+
+          {page==="analysis"&&(
+            <details className="card" style={{padding:"16px 20px",maxWidth:900,cursor:"default"}}>
+              <summary style={{fontWeight:600,fontSize:13,color:"var(--text)",cursor:"pointer",marginBottom:0}}>How the Optimizer Works</summary>
+              <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.7,marginTop:12}}>
+                <p style={{margin:"0 0 10px"}}>
+                  The optimizer finds the best combination of <strong>Vol Flag</strong>, <strong>Price Flag</strong>, <strong>Vol/Price Mix</strong>, and <strong>Buy/Sell Threshold</strong> for a given ticker by searching thousands of parameter combinations and selecting the one with the highest annualized return that keeps the recovery period under the configured maximum.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Train / Test Split (Overfitting Protection)</div>
+                <p style={{margin:"0 0 10px"}}>
+                  The evaluation period is split 80/20. The optimizer searches for the best parameters using only the <strong>first 80%</strong> of the data (the training set). The winning parameters are then evaluated on the <strong>last 20%</strong> (the test set) to see how they perform on data the optimizer never saw. This guards against overfitting {"\u2014"} if the test return is dramatically lower than the train return, the parameters may be curve-fit to historical noise rather than genuine signal. Both metrics are shown in the result: <code>Train: 15.2% / 2.1yr | Test: 8.7% / 3.4yr</code>.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Two-Stage Search</div>
+                <p style={{margin:"0 0 6px"}}>
+                  A single fine-grained grid over the full parameter space would require millions of evaluations. Instead, the optimizer uses a two-stage approach:
+                </p>
+                <ul style={{margin:"0 0 10px",paddingLeft:20}}>
+                  <li style={{marginBottom:4}}><strong>Stage 1 (Coarse):</strong> Wide sweep across all 4 vol flags {"\u00D7"} 4 price flags {"\u00D7"} 11 mix values (0 to 1, step 0.1) {"\u00D7"} 41 thresholds (-0.1 to +0.1, step 0.005) = ~7,200 combinations. This broad range catches optimal thresholds that the previous -0.02 to +0.02 range missed (e.g., TPR at -0.065).</li>
+                  <li style={{marginBottom:4}}><strong>Stage 2 (Fine):</strong> Takes the top 10 results from Stage 1 and refines each with a tighter grid: {"\u00B1"}0.01 threshold (step 0.0005) and {"\u00B1"}0.1 mix (step 0.02) around each seed, keeping the same vol/price flags. Duplicate combinations are skipped. This typically adds ~4,000{"\u2013"}5,000 more evaluations.</li>
+                </ul>
+                <p style={{margin:"0 0 10px"}}>
+                  Total work is roughly 11,000{"\u2013"}12,000 evaluations {"\u2014"} comparable to the old single-pass grid but covering a 10{"\u00D7"} wider threshold range with finer precision around the best candidates.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Recovery Constraint</div>
+                <p style={{margin:"0 0 10px"}}>
+                  The <strong>Max Recovery (yrs)</strong> input controls the maximum acceptable recovery period. The optimizer first filters candidates to those with a recovery period at or below this limit, then picks the highest return. If no candidates pass the filter, it falls back to all results with any positive recovery. Default is 5 years.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Selection Criteria</div>
+                <p style={{margin:"0 0 10px"}}>
+                  Among all candidates that pass the recovery filter, the optimizer selects the parameter set with the <strong>highest annualized return</strong> on the training data. This biases toward growth while the recovery constraint prevents selecting parameters that produce high returns at the cost of catastrophic drawdowns.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Parameter History</div>
+                <p style={{margin:0}}>
+                  When the optimizer finishes, it stores a <code>last_optimized</code> timestamp and a snapshot of the previous parameters (<code>prev_params</code>) in memory. This enables future commit/revert functionality {"\u2014"} optimized parameters are "staged" in the ribbon but not persisted to <code>ticker_params.json</code> until explicitly committed.
+                </p>
+              </div>
+            </details>
+          )}
 
           {view==="detail"&&(analyzing
             ? <div className="loading"><div className="spinner"></div> Fetching data and running model...</div>
@@ -2062,6 +2196,12 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v4.4.0",date:"2026-04-01",items:[
+              "Two-stage optimizer — coarse grid (-0.1 to +0.1 threshold, 0.1 mix step) then fine refinement around top 10 results",
+              "Train/test split — optimizes on first 80% of data, reports both in-sample and out-of-sample performance",
+              "Configurable max recovery constraint in the Analysis ribbon (default 5 years)",
+              "Param history — stores last_optimized timestamp and prev_params when optimizer runs",
+            ]},
             {ver:"v4.3.0",date:"2026-03-30",items:[
               "Per-asset model parameters — each of 25 portfolio tickers now uses its own tuned vol_flag, price_flag, vol_price_mix, and buy/sell thresholds (extracted from Excel models)",
               "Expanded analysis ribbon with Vol Flag, Price Flag, Buy Threshold, Sell Threshold inputs",
