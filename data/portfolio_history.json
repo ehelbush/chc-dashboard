@@ -63029,65 +63029,65 @@
   },
   {
     "date": "2026-04-01",
-    "total_value": 1069969.12,
-    "total_equity": 1070808.16,
+    "total_value": 1074990.36,
+    "total_equity": 1075829.4,
     "cash_balance": 839.04,
-    "net_flows": -14530.75,
-    "day_gain": 47784.5,
+    "net_flows": -22049.83,
+    "day_gain": 27071.07,
     "positions_count": 9,
     "holdings": [
       {
         "symbol": "AVGO",
-        "market_value": 247045.16,
-        "weight": 0.2309,
+        "market_value": 248061.48,
+        "weight": 0.2308,
         "quantity": 794.0
       },
       {
         "symbol": "LLY",
-        "market_value": 181566.0,
-        "weight": 0.1697,
+        "market_value": 182045.16,
+        "weight": 0.1693,
         "quantity": 198.0
       },
       {
         "symbol": "ANET",
-        "market_value": 139094.78,
-        "weight": 0.13,
+        "market_value": 139622.59,
+        "weight": 0.1299,
         "quantity": 1123.0
       },
       {
         "symbol": "COST",
-        "market_value": 97550.18,
-        "weight": 0.0912,
+        "market_value": 97412.0,
+        "weight": 0.0906,
         "quantity": 98.0
       },
       {
         "symbol": "PM",
-        "market_value": 92921.08,
-        "weight": 0.0868,
+        "market_value": 92954.8,
+        "weight": 0.0865,
         "quantity": 562.0
       },
       {
         "symbol": "TPR",
-        "market_value": 83136.0,
-        "weight": 0.0777,
+        "market_value": 85506.0,
+        "weight": 0.0795,
         "quantity": 600.0
       },
       {
         "symbol": "NVDA",
-        "market_value": 80259.92,
-        "weight": 0.075,
+        "market_value": 80520.98,
+        "weight": 0.0749,
         "quantity": 458.0
       },
       {
         "symbol": "GLDM",
-        "market_value": 75354.9,
-        "weight": 0.0704,
+        "market_value": 75623.85,
+        "weight": 0.0703,
         "quantity": 815.0
       },
       {
         "symbol": "GOOG",
-        "market_value": 73041.1,
-        "weight": 0.0683,
+        "market_value": 73243.5,
+        "weight": 0.0681,
         "quantity": 253.0
       }
     ],
