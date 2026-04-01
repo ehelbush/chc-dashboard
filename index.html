@@ -1598,8 +1598,8 @@ function App() {
               <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
             </select>
           </div>
-          <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:90}}/></div>
-          <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:90}}/></div>
+          <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
+          <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
           <button onClick={()=>analyzeTicker()} disabled={analyzing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
           {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
           {tickerParams && tickerParams[symbol] && <span style={{fontSize:10,color:"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>Saved params loaded</span>}
