@@ -1776,6 +1776,8 @@ function App() {
   const [buyThreshold, setBuyThreshold] = useState(0.0012);
   const [sellThreshold, setSellThreshold] = useState(-0.0012);
   const [tickerParams, setTickerParams] = useState(null);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeResult, setOptimizeResult] = useState("");
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
   // Load local ticker data + screener data
@@ -1882,6 +1884,7 @@ function App() {
 
   const handleSelect = ticker => {
     setSymbol(ticker);
+    setPage("analysis");
     const p = tickerParams && tickerParams[ticker.toUpperCase()];
     if (p) { setMix(p.vol_price_mix); setVolFlag(p.vol_flag); setPriceFlag(p.price_flag); setBuyThreshold(p.buy_threshold); setSellThreshold(p.sell_threshold); }
     analyzeTicker(ticker, years, p ? p.vol_price_mix : mix, p ? {
@@ -1889,6 +1892,69 @@ function App() {
     } : undefined);
   };
   const handleKey = e => { if (e.key === "Enter") analyzeTicker(); };
+
+  const optimizeTicker = async () => {
+    const s = symbol.toUpperCase().trim();
+    if (!s) return;
+    setOptimizing(true);
+    setOptimizeResult("");
+    setError(null);
+
+    // Fetch price data
+    let dates, closes, volumes;
+    const yfData = await fetchYahooData(s, years + 1);
+    if (yfData && !yfData.error) { dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; }
+    else if (localData && localData[s]) { dates = localData[s].d; closes = localData[s].c; volumes = localData[s].v; }
+    if (!dates) { setError("No data for " + s); setOptimizing(false); return; }
+
+    // Grid search
+    const results = [];
+    const vFlags = [0, 1, 2, 3];
+    const pFlags = [0, 1, 2, 3];
+    const mixes = []; for (let m = 0; m <= 1.001; m += 0.05) mixes.push(Math.round(m * 100) / 100);
+    const thresholds = []; for (let t = -0.02; t <= 0.0201; t += 0.001) thresholds.push(Math.round(t * 10000) / 10000);
+    const total = vFlags.length * pFlags.length * mixes.length * thresholds.length;
+    let count = 0;
+
+    for (const vf of vFlags) {
+      for (const pf of pFlags) {
+        for (const mx of mixes) {
+          for (const th of thresholds) {
+            const r = computeCHCModel(dates, closes, volumes, {
+              evalYears: years, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th,
+            });
+            if (r && !r.error && r.trading) {
+              const rec = r.trading.recovery_period || 0;
+              const ret = r.trading.avg_yr_return || 0;
+              results.push({vf, pf, mx, th, ret, rec});
+            }
+            count++;
+          }
+        }
+      }
+      setOptimizeResult("Optimizing... " + Math.round(count / total * 100) + "%");
+      await new Promise(ok => setTimeout(ok, 0)); // yield to UI
+    }
+
+    // Two-pass: filter recovery under 5y, then max return
+    let candidates = results.filter(r => r.rec > 0 && r.rec <= 5);
+    if (candidates.length === 0) candidates = results.filter(r => r.rec > 0);
+    if (candidates.length === 0) { setOptimizeResult("No valid params found"); setOptimizing(false); return; }
+    candidates.sort((a, b) => b.ret - a.ret);
+    const best = candidates[0];
+
+    // Apply best params
+    setVolFlag(best.vf);
+    setPriceFlag(best.pf);
+    setMix(best.mx);
+    setBuyThreshold(best.th);
+    setSellThreshold(best.th);
+    setOptimizeResult("Best: " + (best.ret * 100).toFixed(1) + "% ann. / " + best.rec.toFixed(1) + "yr recovery (from " + results.length.toLocaleString() + " combos)");
+    setOptimizing(false);
+
+    // Run analysis with optimal params
+    analyzeTicker(s, years, best.mx, {volFlag: best.vf, priceFlag: best.pf, buyThreshold: best.th, sellThreshold: best.th});
+  };
 
   if (loading) return <div className="app"><div className="loading"><div className="spinner"></div> Loading dashboard...</div></div>;
 
@@ -1901,6 +1967,7 @@ function App() {
 
       <div className="nav-tabs">
         <div className={"nav-tab"+(page==="account"&&view!=="detail"?" active":"")} onClick={()=>{setPage("account");setView("dashboard");}}>Performance</div>
+        <div className={"nav-tab"+(page==="analysis"?" active":"")} onClick={()=>{setPage("analysis");setView(tickerDetail?"detail":"dashboard");}}>Analysis</div>
         <div className={"nav-tab"+(page==="portfolio"&&view!=="detail"?" active":"")} onClick={()=>{setPage("portfolio");setView("dashboard");}}>Select Assets</div>
         <div className={"nav-tab"+(page==="screener"&&view!=="detail"?" active":"")} onClick={()=>{setPage("screener");setView("dashboard");}}>Asset Screener</div>
         <div className={"nav-tab"+(page==="builder"?" active":"")} onClick={()=>{setPage("builder");setView("dashboard");}}>Portfolio Builder</div>
@@ -1908,34 +1975,52 @@ function App() {
         <div className={"nav-tab"+(page==="changelog"?" active":"")} onClick={()=>{setPage("changelog");setView("dashboard");}}>Changelog</div>
       </div>
 
-      <div className="card">
-        <div className="controls" style={{flexWrap:"wrap"}}>
-          <div className="cg"><label>Ticker Symbol</label><input type="text" value={symbol} onChange={e=>{setSymbol(e.target.value.toUpperCase()); loadTickerParams(e.target.value);}} onKeyDown={handleKey} placeholder="e.g. MSFT" style={{width:120}}/></div>
-          <div className="cg"><label>Evaluation Period</label>
-            <select value={years} onChange={e=>setYears(Number(e.target.value))}>
-              <option value={1}>1 Year</option><option value={2}>2 Years</option><option value={3}>3 Years</option>
-              <option value={5}>5 Years</option><option value={7}>7 Years</option><option value={10}>10 Years</option>
-            </select>
+      {page==="analysis"&&(
+        <div>
+          <div className="card">
+            <div className="controls" style={{flexWrap:"wrap"}}>
+              <div className="cg"><label>Ticker Symbol</label><input type="text" value={symbol} onChange={e=>{setSymbol(e.target.value.toUpperCase()); loadTickerParams(e.target.value);}} onKeyDown={handleKey} placeholder="e.g. MSFT" style={{width:120}}/></div>
+              <div className="cg"><label>Evaluation Period</label>
+                <select value={years} onChange={e=>setYears(Number(e.target.value))}>
+                  <option value={1}>1 Year</option><option value={2}>2 Years</option><option value={3}>3 Years</option>
+                  <option value={5}>5 Years</option><option value={7}>7 Years</option><option value={10}>10 Years</option>
+                </select>
+              </div>
+              <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
+              <div className="cg"><label>Vol Flag</label>
+                <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:90}}>
+                  <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
+                </select>
+              </div>
+              <div className="cg"><label>Price Flag</label>
+                <select value={priceFlag} onChange={e=>setPriceFlag(Number(e.target.value))} style={{width:90}}>
+                  <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
+                </select>
+              </div>
+              <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
+              <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
+              <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
+              <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{optimizing?"Optimizing...":"Optimize"}</button>
+              {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
+              {tickerParams && tickerParams[symbol] && <span style={{fontSize:10,color:"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>Saved params loaded</span>}
+              {optimizeResult && <span style={{fontSize:10,color:"var(--blue)",alignSelf:"flex-end",paddingBottom:6}}>{optimizeResult}</span>}
+            </div>
+            {error&&<div className="error-msg">{error}</div>}
           </div>
-          <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
-          <div className="cg"><label>Vol Flag</label>
-            <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:90}}>
-              <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
-            </select>
-          </div>
-          <div className="cg"><label>Price Flag</label>
-            <select value={priceFlag} onChange={e=>setPriceFlag(Number(e.target.value))} style={{width:90}}>
-              <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
-            </select>
-          </div>
-          <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
-          <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
-          <button onClick={()=>analyzeTicker()} disabled={analyzing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
-          {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
-          {tickerParams && tickerParams[symbol] && <span style={{fontSize:10,color:"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>Saved params loaded</span>}
+
+          {view==="detail"&&(analyzing
+            ? <div className="loading"><div className="spinner"></div> Fetching data and running model...</div>
+            : <TickerDetail data={tickerDetail} onBack={()=>setView("dashboard")}/>
+          )}
+
+          {view==="dashboard"&&!analyzing&&(
+            <div className="card" style={{textAlign:"center",padding:40,color:"var(--text2)"}}>
+              <div style={{fontSize:16,marginBottom:8}}>Enter a ticker symbol and click Analyze</div>
+              <div style={{fontSize:13}}>Or click any ticker from Select Assets, Asset Screener, or Portfolio Builder</div>
+            </div>
+          )}
         </div>
-        {error&&<div className="error-msg">{error}</div>}
-      </div>
+      )}
 
       {view==="dashboard"&&page==="portfolio"&&(
         <div>
@@ -2022,11 +2107,6 @@ function App() {
             </div>
           ))}
         </div>
-      )}
-
-      {view==="detail"&&(analyzing
-        ? <div className="loading"><div className="spinner"></div> Fetching data and running model...</div>
-        : <TickerDetail data={tickerDetail} onBack={()=>setView("dashboard")}/>
       )}
 
       <div className="footer">CherryHead Capital Trading Model Dashboard</div>
