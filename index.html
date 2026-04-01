@@ -2099,7 +2099,7 @@ function App() {
             {error&&<div className="error-msg">{error}</div>}
           </div>
 
-          {page==="analysis"&&view!=="detail"&&!analyzing&&(
+          {page==="analysis"&&(
             <details className="card" style={{padding:"16px 20px",maxWidth:900,cursor:"default"}}>
               <summary style={{fontWeight:600,fontSize:13,color:"var(--text)",cursor:"pointer",marginBottom:0}}>How the Optimizer Works</summary>
               <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.7,marginTop:12}}>
