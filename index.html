@@ -1745,8 +1745,8 @@ function App() {
             {term:"Max Loss", def:"The worst peak-to-trough drawdown observed during the evaluation period. Can be misleading if it reflects a single extreme event rather than typical behavior (see Stat3 Loss)."},
             {term:"Recovery Period", def:"Estimated years to recover from the maximum loss, given the average yearly return. Formula: -2 \u00D7 ln(1 + maxLoss) / ln(1 + avgYearlyReturn). Lower is better. 'Never' means the average return is negative, so mathematically the asset cannot recover."},
             {term:"Market Cap", def:"Total market capitalization — share price \u00D7 shares outstanding. Useful for filtering out micro-cap / penny stocks that are susceptible to pump-and-dump schemes. Sourced from Yahoo Finance."},
-          ].map((d, i) => (
-            <div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i<13?"1px solid var(--border)":"none"}}>
+          ].map((d, i, arr) => (
+            <div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i !== arr.length-1?"1px solid var(--border)":"none"}}>
               <div style={{fontWeight:600,fontSize:13,color:"var(--text)",marginBottom:4}}>{d.term}</div>
               <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>{d.def}</div>
             </div>
