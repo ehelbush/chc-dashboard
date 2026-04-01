@@ -616,7 +616,7 @@ function TickerDetail({data,onBack}) {
 
 // ── Portfolio Builder ────────────────────────────────────────────────────
 
-function PortfolioBuilder({screenerData}) {
+function PortfolioBuilder({screenerData, onSelect}) {
   const [constraints, setConstraints] = useState({
     maxAssets: 10, recoveryMax: 5, marketCapMin: 1e9, avgYrMin: 0, sector: "", signalFilter: "buy", rankBy: "av_yrly_return",
   });
@@ -825,7 +825,7 @@ function PortfolioBuilder({screenerData}) {
               <th>Avg Yr</th><th>Last Yr</th><th>Recovery</th><th>Stat3 Loss</th>
             </tr></thead><tbody>
               {portfolio.selected.map(t => (
-                <tr key={t.ticker}>
+                <tr key={t.ticker} onClick={() => onSelect && onSelect(t.ticker)} style={{cursor:"pointer"}}>
                   <td className="tc">{t.ticker}</td>
                   <td style={{color:"var(--text2)",fontSize:11}}>{t.sector || "\u2014"}</td>
                   <td style={{color:"var(--text2)",fontSize:12}}>{fmtCap(t.market_cap)}</td>
@@ -1958,7 +1958,7 @@ function App() {
       )}
 
       {view==="dashboard"&&page==="builder"&&(
-        <PortfolioBuilder screenerData={screenerData}/>
+        <PortfolioBuilder screenerData={screenerData} onSelect={handleSelect}/>
       )}
 
       {view==="dashboard"&&page==="definitions"&&(
