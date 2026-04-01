@@ -1946,8 +1946,18 @@ function App() {
 
   const revertParams = () => {
     const s = symbol.toUpperCase().trim();
-    if (!s || !committedParams || !committedParams[s]) return;
+    if (!s || !committedParams) return;
     const c = committedParams[s];
+    if (!c) {
+      // Ticker was never committed — revert to default params
+      setVolFlag(2); setPriceFlag(1); setMix(0.72);
+      setBuyThreshold(0.0012); setSellThreshold(-0.0012);
+      setTickerParams(prev => { const next = {...prev}; delete next[s]; return next; });
+      setSaveMsg("Reverted " + s + " to defaults (no committed params)");
+      setOptimizeResult("");
+      analyzeTicker(s, years, 0.72, {volFlag: 2, priceFlag: 1, buyThreshold: 0.0012, sellThreshold: -0.0012});
+      return;
+    }
     setVolFlag(c.vol_flag);
     setPriceFlag(c.price_flag);
     setMix(c.vol_price_mix);
@@ -1956,6 +1966,8 @@ function App() {
     // Reset in-memory tickerParams to committed state
     setTickerParams(prev => ({...prev, [s]: {...c}}));
     setSaveMsg("Reverted " + s + " to committed params");
+    setOptimizeResult("");
+    analyzeTicker(s, years, c.vol_price_mix, {volFlag: c.vol_flag, priceFlag: c.price_flag, buyThreshold: c.buy_threshold, sellThreshold: c.sell_threshold});
   };
 
   const optimizeTicker = async () => {
