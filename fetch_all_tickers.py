@@ -143,6 +143,8 @@ def compute_chc_model(dates, closes, volumes, eval_years=5,
         recovery = 0
         if max_loss < 0 and avg_yr_ret > 0:
             recovery = -2 * math.log(1 + max_loss) / math.log(1 + avg_yr_ret)
+        elif max_loss < 0 and avg_yr_ret <= 0:
+            recovery = 999
         return {
             "last_yr_return": round(last_yr_ret, 6),
             "avg_yr_return": round(avg_yr_ret, 6),

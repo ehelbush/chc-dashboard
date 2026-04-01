@@ -254,6 +254,7 @@ function computeCHCModel(dates, closes, volumes, opts) {
     const stat3Loss = avgLoss - 3 * stdLoss;
     let recovery = 0;
     if (maxLoss < 0 && avgYrRet > 0) recovery = -2 * Math.log(1 + maxLoss) / Math.log(1 + avgYrRet);
+    else if (maxLoss < 0 && avgYrRet <= 0) recovery = 999;
     return {
       last_yr_return: +lastYrRet.toFixed(6), avg_yr_return: +avgYrRet.toFixed(6),
       current_loss: +currentLoss.toFixed(6), max_loss: +maxLoss.toFixed(6),
@@ -492,7 +493,7 @@ function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
           <td className={pc(t.est_next_yr_return)}>{pct(t.est_next_yr_return)}</td>
           <td className={pc(t.current_loss)}>{pct(t.current_loss)}</td>
           <td className="neg">{pct(t.stat3_loss)}</td>
-          <td className={rc(t.recovery_period)}>{t.recovery_period.toFixed(1)}</td>
+          <td className={t.recovery_period>=999?"neg":rc(t.recovery_period)}>{t.recovery_period>=999?"Never":t.recovery_period.toFixed(1)}</td>
         </tr>
       ))}
     </tbody></table></div>
@@ -538,7 +539,7 @@ function TickerDetail({data,onBack}) {
             <div className="dr"><span>Current Loss</span><span className="neg">{pct(trading?trading.current_loss:null)}</span></div>
             <div className="dr"><span>Max Loss</span><span className="neg">{pct(trading?trading.max_loss:null)}</span></div>
             <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(trading?trading.stat3_loss:null)}</span></div>
-            <div className="dr"><span>Recovery Period</span><span className={rc(trading&&trading.recovery_period!=null?trading.recovery_period:0)}>{trading&&trading.recovery_period!=null?trading.recovery_period.toFixed(1):"\u2014"} years</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={trading&&trading.recovery_period>=999?"neg":rc(trading&&trading.recovery_period!=null?trading.recovery_period:0)}>{trading&&trading.recovery_period!=null?(trading.recovery_period>=999?"Never":trading.recovery_period.toFixed(1)+" years"):"\u2014"}</span></div>
           </div>
         </div>
         <div className="card">
@@ -551,7 +552,7 @@ function TickerDetail({data,onBack}) {
             <div className="dr"><span>Current Loss</span><span className="neg">{pct(buy_hold?buy_hold.current_loss:null)}</span></div>
             <div className="dr"><span>Max Loss</span><span className="neg">{pct(buy_hold?buy_hold.max_loss:null)}</span></div>
             <div className="dr"><span>Stat3 Loss</span><span className="neg">{pct(buy_hold?buy_hold.stat3_loss:null)}</span></div>
-            <div className="dr"><span>Recovery Period</span><span className={rc(buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period:0)}>{buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period.toFixed(1):"\u2014"} years</span></div>
+            <div className="dr"><span>Recovery Period</span><span className={buy_hold&&buy_hold.recovery_period>=999?"neg":rc(buy_hold&&buy_hold.recovery_period!=null?buy_hold.recovery_period:0)}>{buy_hold&&buy_hold.recovery_period!=null?(buy_hold.recovery_period>=999?"Never":buy_hold.recovery_period.toFixed(1)+" years"):"\u2014"}</span></div>
           </div>
           <div className="ds"><h4>Model Parameters</h4>
             <div className="dr"><span>Vol/Price Mix</span><span>{params?(params.vol_price_mix*100).toFixed(0):"72"}% vol / {params?((1-params.vol_price_mix)*100).toFixed(0):"28"}% price</span></div>
