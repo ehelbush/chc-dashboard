@@ -522,12 +522,42 @@ function TickerDetail({data,onBack}) {
   const {trading,buy_hold,chart,params}=data;
   const cd = chart&&chart.dates ? chart.dates.map((d,i)=>({date:d,trading:chart.trading_balance[i],buyHold:chart.bh_balance[i]})) : [];
 
+  const isBuy = data.buy_sell_call === "Buy";
+  const signalColor = isBuy ? "var(--green)" : "var(--red)";
+  const signalBg = isBuy ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)";
+  const signalBorder = isBuy ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)";
+
   return (
     <div>
-      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:20,flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:12,flexWrap:"wrap"}}>
         <button className="btn-s" onClick={onBack} style={{padding:"6px 14px",fontSize:13}}>{"\u2190"} Back</button>
         <h2 style={{fontSize:20,fontWeight:700}}>{data.symbol}<span style={{color:"var(--text2)",fontWeight:400,fontSize:14,marginLeft:8}}>{data.name||""}</span></h2>
-        <span className="badge" style={{background:data.buy_sell_call==="Buy"?"var(--green-bg)":"var(--red-bg)",color:data.buy_sell_call==="Buy"?"var(--green)":"var(--red)"}}>{data.buy_sell_call} {"\u2014"} Strength: {data.call_strength!=null?data.call_strength.toFixed(3):""}</span>
+      </div>
+
+      <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <div style={{background:signalBg,border:"1px solid "+signalBorder,borderRadius:8,padding:"12px 24px",display:"flex",alignItems:"center",gap:16}}>
+          <div style={{fontSize:28,fontWeight:800,color:signalColor}}>{data.buy_sell_call || "Hold"}</div>
+          <div style={{borderLeft:"1px solid "+signalBorder,paddingLeft:16}}>
+            <div style={{fontSize:11,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px"}}>Signal Strength</div>
+            <div style={{fontSize:18,fontWeight:700,color:signalColor}}>{data.call_strength != null ? (data.call_strength >= 0 ? "+" : "") + data.call_strength.toFixed(3) : "\u2014"}</div>
+          </div>
+        </div>
+        {trading && (
+          <div style={{background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:8,padding:"12px 24px",display:"flex",gap:24}}>
+            <div>
+              <div style={{fontSize:11,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px"}}>Annualized</div>
+              <div style={{fontSize:18,fontWeight:700,color:trading.avg_yr_return >= 0 ? "var(--green)" : "var(--red)"}}>{pct(trading.avg_yr_return)}</div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px"}}>Recovery</div>
+              <div style={{fontSize:18,fontWeight:700,color:trading.recovery_period >= 999 ? "var(--red)" : rc(trading.recovery_period) === "rl" ? "var(--green)" : "var(--text)"}}>{trading.recovery_period >= 999 ? "Never" : trading.recovery_period != null ? trading.recovery_period.toFixed(1) + "y" : "\u2014"}</div>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px"}}>Drawdown</div>
+              <div style={{fontSize:18,fontWeight:700,color:"var(--red)"}}>{pct(trading.current_loss)}</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {data.summaryOnly&&(
@@ -1682,7 +1712,7 @@ function App() {
             <div className="card-title">Select Assets {"\u2014"} Sorted by {sortCfg.key.replace(/_/g," ")}<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8}}>(click a row to analyze)</span></div>
             <SummaryTable tickers={SEED_DATA.map(t => {
               const sr = screenerData && screenerData.results && screenerData.results.find(r => r.ticker === t.ticker);
-              return sr ? {...t, sector: sr.sector || t.sector, market_cap: sr.market_cap || t.market_cap} : t;
+              return sr ? {...t, ...sr, ticker: t.ticker} : t;
             })} onSelect={handleSelect} sortCfg={sortCfg} onSort={handleSort}/>
           </div>
         </div>
