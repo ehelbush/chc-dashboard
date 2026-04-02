@@ -74,41 +74,37 @@ def load_tokens():
 
 def exchange_code_for_tokens(auth_code, app_key, app_secret, callback_url):
     """Exchange authorization code for access + refresh tokens."""
-    # Use requests library (same approach as Stock-Updater's working code)
-    try:
-        import requests
-    except ImportError:
-        print("  Installing requests library...")
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "requests", "--break-system-packages", "-q"])
-        import requests
-
     # URL-decode the auth code if it was encoded
     auth_code = urllib.parse.unquote(auth_code)
 
-    try:
-        response = requests.post(
-            url=TOKEN_URL,
-            auth=(app_key, app_secret),
-            data={
-                "grant_type": "authorization_code",
-                "code": auth_code,
-                "redirect_uri": callback_url,
-            },
-            timeout=30,
-        )
+    creds = base64.b64encode(f"{app_key}:{app_secret}".encode()).decode()
 
-        if response.ok:
-            tokens = response.json()
+    data = urllib.parse.urlencode({
+        "grant_type": "authorization_code",
+        "code": auth_code,
+        "redirect_uri": callback_url,
+    }).encode()
+
+    req = urllib.request.Request(TOKEN_URL, data=data, method="POST")
+    req.add_header("Authorization", f"Basic {creds}")
+    req.add_header("Content-Type", "application/x-www-form-urlencoded")
+
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
+            tokens = json.loads(resp.read().decode())
             if "access_token" in tokens:
                 return tokens
             else:
                 print(f"  Error: Unexpected response: {tokens}")
                 return None
-        else:
-            print(f"  Error exchanging code: HTTP {response.status_code}")
-            print(f"  Response: {response.text[:500]}")
-            return None
+    except urllib.error.HTTPError as e:
+        print(f"  Error exchanging code: HTTP {e.code}")
+        print(f"  Response: {e.read().decode()[:500]}")
+        return None
     except Exception as e:
         print(f"  Error exchanging code: {e}")
         return None
