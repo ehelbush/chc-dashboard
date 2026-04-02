@@ -1000,7 +1000,7 @@ function TickerDetail({data,onBack}) {
 
 function PortfolioBuilder({screenerData, onSelect}) {
   const [constraints, setConstraints] = useState({
-    maxAssets: 10, recoveryMax: 5, marketCapMin: 1e9, avgYrMin: 0, sector: "", signalFilter: "buy", rankBy: "av_yrly_return",
+    maxAssets: 10, recoveryMax: 5, marketCapMin: 1e9, avgYrMin: 0, sector: "", signalFilter: "buy", rankBy: "av_yrly_return", backtestYrs: 5,
   });
   const [portfolio, setPortfolio] = useState(null);
   const [building, setBuilding] = useState(false);
@@ -1049,7 +1049,7 @@ function PortfolioBuilder({screenerData, onSelect}) {
       const sym = syms[i];
       setProgress("Fetching price data: " + (i + 1) + "/" + syms.length + " (" + sym + ")...");
       try {
-        const d = await fetchYahooData(sym, 6);
+        const d = await fetchYahooData(sym, constraints.backtestYrs);
         if (d && d.dates && d.dates.length > 100) {
           priceData[sym] = {dates: d.dates, closes: d.closes};
         } else {
@@ -1180,6 +1180,11 @@ function PortfolioBuilder({screenerData, onSelect}) {
           <div className="cg"><label style={{fontSize:10}}>Rank By</label>
             <select value={constraints.rankBy} onChange={e => setC("rankBy", e.target.value)} style={{width:110,fontSize:12}}>
               <option value="av_yrly_return">Avg Yr Return</option><option value="est_next_yr_return">Est Next Yr</option><option value="last_yr_return">Last Yr Return</option>
+            </select>
+          </div>
+          <div className="cg"><label style={{fontSize:10}}>Backtest Period</label>
+            <select value={constraints.backtestYrs} onChange={e => setC("backtestYrs", Number(e.target.value))} style={{width:80,fontSize:12}}>
+              <option value={1}>1 Year</option><option value={2}>2 Years</option><option value={3}>3 Years</option><option value={5}>5 Years</option><option value={10}>10 Years</option>
             </select>
           </div>
           <button onClick={buildPortfolio} disabled={building || !screenerData}>{building ? "Building..." : "Build Portfolio"}</button>
