@@ -339,11 +339,65 @@ function computeCHCModel(dates, closes, volumes, opts) {
   // Downsample chart
   const step = Math.max(1, Math.floor((N - si) / 500));
   const chartDates = [], chartTrading = [], chartBH = [];
+  const chartSignal = [], chartDrawdown = [], chartBHDrawdown = [];
+  let peakBal = bal[si] || initBal, peakBH = bhBal[si] || initBal;
   for (let i = si; i < N; i += step) {
     chartDates.push(dt[i]);
     chartTrading.push(Math.round(bal[i]));
     chartBH.push(Math.round(bhBal[i]));
+    chartSignal.push(+comb[i].toFixed(6));
+    peakBal = Math.max(peakBal, bal[i]);
+    peakBH = Math.max(peakBH, bhBal[i]);
+    chartDrawdown.push(peakBal > 0 ? +((bal[i] / peakBal - 1) * 100).toFixed(2) : 0);
+    chartBHDrawdown.push(peakBH > 0 ? +((bhBal[i] / peakBH - 1) * 100).toFixed(2) : 0);
   }
+
+  // Trade log — record each buy/sell transition
+  const trades = [];
+  let entryDate = null, entryPrice = 0, entryIdx = 0;
+  for (let i = si + 1; i < N; i++) {
+    if (signals[i] === "Buy" && signals[i-1] !== "Buy") {
+      entryDate = dt[i]; entryPrice = cl[i]; entryIdx = i;
+    }
+    if (signals[i] !== "Buy" && signals[i-1] === "Buy" && entryDate) {
+      const exitPrice = cl[i];
+      const ret = entryPrice > 0 ? (exitPrice / entryPrice - 1) : 0;
+      const days = i - entryIdx;
+      trades.push({
+        entry_date: entryDate, exit_date: dt[i],
+        entry_price: +entryPrice.toFixed(2), exit_price: +exitPrice.toFixed(2),
+        return_pct: +ret.toFixed(4), days,
+      });
+      entryDate = null;
+    }
+  }
+  // Open trade (still holding)
+  if (entryDate && signals[N-1] === "Buy") {
+    const ret = entryPrice > 0 ? (cl[N-1] / entryPrice - 1) : 0;
+    trades.push({
+      entry_date: entryDate, exit_date: null,
+      entry_price: +entryPrice.toFixed(2), exit_price: +cl[N-1].toFixed(2),
+      return_pct: +ret.toFixed(4), days: N - 1 - entryIdx, open: true,
+    });
+  }
+
+  // Trade statistics
+  const closedTrades = trades.filter(t => !t.open);
+  const wins = closedTrades.filter(t => t.return_pct > 0);
+  const losses = closedTrades.filter(t => t.return_pct <= 0);
+  const totalDaysInMarket = trades.reduce((s, t) => s + t.days, 0);
+  const totalTradingDays = N - si;
+  const tradeStats = {
+    total_trades: trades.length,
+    closed_trades: closedTrades.length,
+    win_rate: closedTrades.length > 0 ? wins.length / closedTrades.length : 0,
+    avg_win: wins.length > 0 ? wins.reduce((s, t) => s + t.return_pct, 0) / wins.length : 0,
+    avg_loss: losses.length > 0 ? losses.reduce((s, t) => s + t.return_pct, 0) / losses.length : 0,
+    best_trade: closedTrades.length > 0 ? Math.max(...closedTrades.map(t => t.return_pct)) : 0,
+    worst_trade: closedTrades.length > 0 ? Math.min(...closedTrades.map(t => t.return_pct)) : 0,
+    avg_holding_days: closedTrades.length > 0 ? Math.round(closedTrades.reduce((s, t) => s + t.days, 0) / closedTrades.length) : 0,
+    time_in_market: totalTradingDays > 0 ? totalDaysInMarket / totalTradingDays : 0,
+  };
 
   return {
     buy_sell_call: buySignal, call_strength: +callStrength.toFixed(6),
@@ -351,7 +405,9 @@ function computeCHCModel(dates, closes, volumes, opts) {
     eval_period_start: dt[si] || "", eval_period_end: dt[N-1] || "",
     eval_years: evalYears, trading, buy_hold: buyHold,
     params: { vol_price_mix: volPriceMix, buy_threshold: buyThreshold, sell_threshold: sellThreshold },
-    chart: { dates: chartDates, trading_balance: chartTrading, bh_balance: chartBH },
+    chart: { dates: chartDates, trading_balance: chartTrading, bh_balance: chartBH,
+             signal: chartSignal, drawdown: chartDrawdown, bh_drawdown: chartBHDrawdown },
+    trades, tradeStats,
   };
 }
 
@@ -433,7 +489,7 @@ const fmtCap = v => { if (v == null || isNaN(v) || v === 0) return "\u2014"; if 
 
 
 // ── SVG Chart ───────────────────────────────────────────────────────────────
-function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad, regions }) {
+function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad, regions, hLines }) {
   const [tip, setTip] = useState(null);
   const ref = useRef(null);
   const containerRef = useRef(null);
@@ -488,6 +544,14 @@ function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad, r
             <rect x={rx} y={p.t} width={Math.max(rw,1)} height={h2} fill={reg.color} opacity={0.08}/>
             <line x1={rx} y1={p.t} x2={rx} y2={p.t+h2} stroke={reg.color} strokeWidth={1} opacity={0.3} strokeDasharray="4,4"/>
             <text x={rx + rw/2} y={p.t+12} textAnchor="middle" fill={reg.color} fontSize="9" opacity={0.7}>{reg.label}</text>
+          </g>;
+        })}
+        {hLines && hLines.map((hl,i) => {
+          const hy = yS(hl.value);
+          if (hy < p.t || hy > p.t + h2) return null;
+          return <g key={"hl"+i}>
+            <line x1={p.l} y1={hy} x2={width-p.r} y2={hy} stroke={hl.color||"#9498a8"} strokeWidth={hl.width||1} strokeDasharray={hl.dash||"6,3"} opacity={hl.opacity||0.8}/>
+            {hl.label && <text x={width-p.r+4} y={hy+3} fill={hl.color||"#9498a8"} fontSize="9">{hl.label}</text>}
           </g>;
         })}
         {yT.map((t,i)=><line key={i} x1={p.l} y1={t.y} x2={width-p.r} y2={t.y} stroke="#2e3348" strokeWidth="1" strokeDasharray="4,4"/>)}
@@ -617,6 +681,9 @@ function TickerDetail({data,onBack}) {
   if(!data) return null;
   const {trading,buy_hold,chart,params}=data;
   const cd = chart&&chart.dates ? chart.dates.map((d,i)=>({date:d,trading:chart.trading_balance[i],buyHold:chart.bh_balance[i]})) : [];
+  const signalData = chart&&chart.signal ? chart.dates.map((d,i)=>({date:d,signal:chart.signal[i]})) : [];
+  const ddData = chart&&chart.drawdown ? chart.dates.map((d,i)=>({date:d,trading:chart.drawdown[i],buyHold:chart.bh_drawdown[i]})) : [];
+  const ts = data.tradeStats || {};
 
   const isBuy = data.buy_sell_call === "Buy";
   const signalColor = isBuy ? "var(--green)" : "var(--red)";
@@ -705,6 +772,116 @@ function TickerDetail({data,onBack}) {
           </div>
         </div>
       </div>
+
+      {/* Signal Chart */}
+      {signalData.length > 0 && !data.summaryOnly && (
+        <div className="card">
+          <div className="card-title">Combined Signal Over Time</div>
+          <Chart data={signalData} height={250} xKey="date"
+            lines={[{key:"signal",label:"Combined Signal",color:"#8b5cf6",width:1.5}]}
+            yFormat={v => v.toFixed(3)}
+            hLines={[
+              {value:params.buy_threshold,color:"#22c55e",label:"Buy "+params.buy_threshold,dash:"6,3"},
+              {value:params.sell_threshold,color:"#ef4444",label:"Sell "+params.sell_threshold,dash:"6,3"},
+              {value:0,color:"#9498a8",label:"0",dash:"2,4",opacity:0.4},
+            ]}
+          />
+        </div>
+      )}
+
+      {/* Drawdown Chart */}
+      {ddData.length > 0 && !data.summaryOnly && (
+        <div className="card">
+          <div className="card-title">Drawdown Over Time</div>
+          <Chart data={ddData} height={220} xKey="date"
+            lines={[
+              {key:"trading",label:"With Trading",color:"#22c55e",width:2},
+              {key:"buyHold",label:"Buy & Hold",color:"#3b82f6",width:1.5,opacity:0.7},
+            ]}
+            yFormat={v => v.toFixed(1)+"%"}
+            hLines={[{value:0,color:"#9498a8",dash:"2,4",opacity:0.3}]}
+          />
+        </div>
+      )}
+
+      {/* Trade Statistics */}
+      {ts.total_trades > 0 && !data.summaryOnly && (
+        <div className="card">
+          <div className="card-title">Trade Statistics</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Total Trades</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{ts.total_trades}</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Win Rate</div>
+              <div style={{fontSize:22,fontWeight:700,color:ts.win_rate >= 0.5 ? "var(--green)" : "var(--red)"}}>{(ts.win_rate*100).toFixed(0)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Win</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--green)"}}>+{(ts.avg_win*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Loss</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--red)"}}>{(ts.avg_loss*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Best Trade</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--green)"}}>+{(ts.best_trade*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Worst Trade</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--red)"}}>{(ts.worst_trade*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Hold (days)</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{ts.avg_holding_days}</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Time in Market</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{(ts.time_in_market*100).toFixed(0)}%</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trade Log */}
+      {data.trades && data.trades.length > 0 && !data.summaryOnly && (
+        <div className="card">
+          <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>Trade Log ({data.trades.length} trades)</span>
+            <button onClick={()=>exportCSV(data.trades,[
+              {label:"Entry Date",field:"entry_date"},{label:"Exit Date",field:"exit_date"},
+              {label:"Entry Price",field:"entry_price"},{label:"Exit Price",field:"exit_price"},
+              {label:"Return %",field:"return_pct"},{label:"Days",field:"days"}
+            ],data.symbol+"_trades.csv")} style={{fontSize:11,padding:"4px 10px",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",fontWeight:500,textTransform:"none",letterSpacing:0}}>Export CSV</button>
+          </div>
+          <div className="table-wrap" style={{maxHeight:400,overflowY:"auto"}}>
+            <table>
+              <thead><tr>
+                <th style={{cursor:"default"}}>Entry Date</th><th style={{cursor:"default"}}>Exit Date</th>
+                <th style={{cursor:"default"}}>Entry Price</th><th style={{cursor:"default"}}>Exit Price</th>
+                <th style={{cursor:"default"}}>Return</th><th style={{cursor:"default"}}>Days</th>
+              </tr></thead>
+              <tbody>
+                {data.trades.slice().reverse().map((t, i) => (
+                  <tr key={i}>
+                    <td>{t.entry_date}</td>
+                    <td>{t.exit_date || <span style={{color:"var(--green)",fontWeight:600}}>Open</span>}</td>
+                    <td>${t.entry_price.toFixed(2)}</td>
+                    <td>${t.exit_price.toFixed(2)}</td>
+                    <td className={t.return_pct >= 0 ? "pos" : "neg"} style={{fontWeight:600}}>
+                      {t.return_pct >= 0 ? "+" : ""}{(t.return_pct*100).toFixed(1)}%
+                      {t.open && <span style={{fontSize:10,marginLeft:4,color:"var(--text2)"}}>(unrealized)</span>}
+                    </td>
+                    <td>{t.days}d</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Company Overview + Financials + News */}
       {data.profile && (data.profile.description || data.profile.financials || (data.profile.news && data.profile.news.length > 0)) && (() => {
@@ -2725,7 +2902,7 @@ function App() {
             style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"5px 10px",borderRadius:8,fontSize:14,cursor:"pointer",lineHeight:1}}>
             {theme==="dark"?"\u2600":"\u263D"}
           </button>
-          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.2.0</span>
+          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.3.0</span>
         </div>
       </div>
 
@@ -3133,6 +3310,13 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.3.0",date:"2026-04-02",items:[
+              "Signal Chart \u2014 combined signal line over time with horizontal buy/sell threshold lines, visualizes crossovers and signal strength",
+              "Drawdown Chart \u2014 drawdown % over time for both trading strategy and buy-and-hold, reveals drawdown depth and duration",
+              "Trade Statistics \u2014 total trades, win rate, avg win/loss %, best/worst trade, avg holding days, time in market %",
+              "Trade Log \u2014 every buy/sell with entry/exit dates, prices, return %, and holding days; open positions marked; exportable as CSV",
+              "Chart hLines prop \u2014 horizontal reference lines (thresholds, zero line) on any chart",
+            ]},
             {ver:"v5.2.0",date:"2026-04-02",items:[
               "Company fundamentals on Analysis detail \u2014 business description, sector, industry, employee count",
               "Financials & Valuation panel \u2014 revenue, revenue growth, gross/operating/EBITDA/net/cash flow margins, P/E, EV/Revenue, EV/EBITDA, P/S, PEG, FCF, debt, ROE, beta",
