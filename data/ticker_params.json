@@ -1,27 +1,193 @@
 {
-  "AAPL": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.72, "buy_threshold": 0.0012, "sell_threshold": 0.0012},
-  "AMD": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.75, "buy_threshold": -0.0005, "sell_threshold": -0.0005},
-  "ANET": {"vol_flag": 1, "price_flag": 2, "vol_price_mix": 0.95, "buy_threshold": -0.0065, "sell_threshold": -0.0065},
-  "AVGO": {"vol_flag": 0, "price_flag": 2, "vol_price_mix": 0.15, "buy_threshold": 0, "sell_threshold": 0},
-  "COST": {"vol_flag": 1, "price_flag": 2, "vol_price_mix": 0.05, "buy_threshold": -0.0004, "sell_threshold": -0.0004},
-  "GLDM": {"vol_flag": 1, "price_flag": 1, "vol_price_mix": 0.42, "buy_threshold": -0.0008, "sell_threshold": -0.0008},
-  "GOOG": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.62, "buy_threshold": 0, "sell_threshold": 0},
-  "IWF": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.45, "buy_threshold": 0, "sell_threshold": 0},
-  "LLY": {"vol_flag": 1, "price_flag": 1, "vol_price_mix": 0.92, "buy_threshold": -0.005, "sell_threshold": -0.005},
-  "MU": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.75, "buy_threshold": -0.006, "sell_threshold": -0.006},
-  "NRG": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.85, "buy_threshold": 0, "sell_threshold": 0},
-  "NVDA": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.40, "buy_threshold": -0.0009, "sell_threshold": -0.0009},
-  "PANW": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.48, "buy_threshold": -0.02, "sell_threshold": -0.02},
-  "PLTR": {"vol_flag": 1, "price_flag": 1, "vol_price_mix": 0.90, "buy_threshold": -0.0005, "sell_threshold": -0.0005},
-  "PM": {"vol_flag": 1, "price_flag": 2, "vol_price_mix": 0.80, "buy_threshold": -0.0039, "sell_threshold": -0.0039},
-  "QQQ": {"vol_flag": 0, "price_flag": 2, "vol_price_mix": 0.26, "buy_threshold": 0, "sell_threshold": 0},
-  "RCL": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.95, "buy_threshold": -0.002, "sell_threshold": -0.002},
-  "SHOP": {"vol_flag": 1, "price_flag": 1, "vol_price_mix": 0.32, "buy_threshold": 0.007, "sell_threshold": 0.007},
-  "SIVR": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.97, "buy_threshold": -0.001, "sell_threshold": -0.001},
-  "SPY": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.90, "buy_threshold": -0.0068, "sell_threshold": -0.0068},
-  "TPR": {"vol_flag": 0, "price_flag": 1, "vol_price_mix": 0.98, "buy_threshold": -0.065, "sell_threshold": -0.065},
-  "TSLA": {"vol_flag": 1, "price_flag": 1, "vol_price_mix": 0.22, "buy_threshold": 0.003, "sell_threshold": 0.003},
-  "TSM": {"vol_flag": 1, "price_flag": 1, "vol_price_mix": 0.80, "buy_threshold": -0.001, "sell_threshold": -0.001},
-  "USO": {"vol_flag": 1, "price_flag": 2, "vol_price_mix": 0.25, "buy_threshold": -0.0069, "sell_threshold": -0.0069},
-  "XLE": {"vol_flag": 1, "price_flag": 1, "vol_price_mix": 0.79, "buy_threshold": -0.005, "sell_threshold": -0.005}
+  "AAPL": {
+    "buy_threshold": 0.0012,
+    "price_flag": 1,
+    "sell_threshold": 0.0012,
+    "vol_flag": 0,
+    "vol_price_mix": 0.72
+  },
+  "AMD": {
+    "buy_threshold": -0.0005,
+    "price_flag": 1,
+    "sell_threshold": -0.0005,
+    "vol_flag": 0,
+    "vol_price_mix": 0.75
+  },
+  "ANET": {
+    "buy_threshold": -0.0065,
+    "price_flag": 2,
+    "sell_threshold": -0.0065,
+    "vol_flag": 1,
+    "vol_price_mix": 0.95
+  },
+  "AVGO": {
+    "buy_threshold": 0,
+    "price_flag": 2,
+    "sell_threshold": 0,
+    "vol_flag": 0,
+    "vol_price_mix": 0.15
+  },
+  "COST": {
+    "buy_threshold": -0.0004,
+    "price_flag": 2,
+    "sell_threshold": -0.0004,
+    "vol_flag": 1,
+    "vol_price_mix": 0.05
+  },
+  "GLDM": {
+    "buy_threshold": -0.0008,
+    "price_flag": 1,
+    "sell_threshold": -0.0008,
+    "vol_flag": 1,
+    "vol_price_mix": 0.42
+  },
+  "GOOG": {
+    "buy_threshold": 0,
+    "price_flag": 1,
+    "sell_threshold": 0,
+    "vol_flag": 0,
+    "vol_price_mix": 0.62
+  },
+  "IWF": {
+    "buy_threshold": 0,
+    "price_flag": 1,
+    "sell_threshold": 0,
+    "vol_flag": 0,
+    "vol_price_mix": 0.45
+  },
+  "LLY": {
+    "buy_threshold": -0.005,
+    "price_flag": 1,
+    "sell_threshold": -0.005,
+    "vol_flag": 1,
+    "vol_price_mix": 0.92
+  },
+  "MSFT": {
+    "buy_threshold": 0.006,
+    "last_optimized": "2026-04-02T06:38:02.615Z",
+    "price_flag": 2,
+    "sell_threshold": 0.006,
+    "test_metrics": {
+      "avg_yr_return": -0.122596,
+      "recovery_period": 999
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.136041,
+      "recovery_period": 2.85
+    },
+    "vol_flag": 1,
+    "vol_price_mix": 0.1
+  },
+  "MU": {
+    "buy_threshold": -0.006,
+    "price_flag": 1,
+    "sell_threshold": -0.006,
+    "vol_flag": 0,
+    "vol_price_mix": 0.75
+  },
+  "NRG": {
+    "buy_threshold": 0,
+    "price_flag": 1,
+    "sell_threshold": 0,
+    "vol_flag": 0,
+    "vol_price_mix": 0.85
+  },
+  "NVDA": {
+    "buy_threshold": -0.0009,
+    "price_flag": 1,
+    "sell_threshold": -0.0009,
+    "vol_flag": 0,
+    "vol_price_mix": 0.4
+  },
+  "PANW": {
+    "buy_threshold": -0.02,
+    "price_flag": 1,
+    "sell_threshold": -0.02,
+    "vol_flag": 0,
+    "vol_price_mix": 0.48
+  },
+  "PLTR": {
+    "buy_threshold": -0.0005,
+    "price_flag": 1,
+    "sell_threshold": -0.0005,
+    "vol_flag": 1,
+    "vol_price_mix": 0.9
+  },
+  "PM": {
+    "buy_threshold": -0.0039,
+    "price_flag": 2,
+    "sell_threshold": -0.0039,
+    "vol_flag": 1,
+    "vol_price_mix": 0.8
+  },
+  "QQQ": {
+    "buy_threshold": 0,
+    "price_flag": 2,
+    "sell_threshold": 0,
+    "vol_flag": 0,
+    "vol_price_mix": 0.26
+  },
+  "RCL": {
+    "buy_threshold": -0.002,
+    "price_flag": 1,
+    "sell_threshold": -0.002,
+    "vol_flag": 0,
+    "vol_price_mix": 0.95
+  },
+  "SHOP": {
+    "buy_threshold": 0.007,
+    "price_flag": 1,
+    "sell_threshold": 0.007,
+    "vol_flag": 1,
+    "vol_price_mix": 0.32
+  },
+  "SIVR": {
+    "buy_threshold": -0.001,
+    "price_flag": 1,
+    "sell_threshold": -0.001,
+    "vol_flag": 0,
+    "vol_price_mix": 0.97
+  },
+  "SPY": {
+    "buy_threshold": -0.0068,
+    "price_flag": 1,
+    "sell_threshold": -0.0068,
+    "vol_flag": 0,
+    "vol_price_mix": 0.9
+  },
+  "TPR": {
+    "buy_threshold": -0.065,
+    "price_flag": 1,
+    "sell_threshold": -0.065,
+    "vol_flag": 0,
+    "vol_price_mix": 0.98
+  },
+  "TSLA": {
+    "buy_threshold": 0.003,
+    "price_flag": 1,
+    "sell_threshold": 0.003,
+    "vol_flag": 1,
+    "vol_price_mix": 0.22
+  },
+  "TSM": {
+    "buy_threshold": -0.001,
+    "price_flag": 1,
+    "sell_threshold": -0.001,
+    "vol_flag": 1,
+    "vol_price_mix": 0.8
+  },
+  "USO": {
+    "buy_threshold": -0.0069,
+    "price_flag": 2,
+    "sell_threshold": -0.0069,
+    "vol_flag": 1,
+    "vol_price_mix": 0.25
+  },
+  "XLE": {
+    "buy_threshold": -0.005,
+    "price_flag": 1,
+    "sell_threshold": -0.005,
+    "vol_flag": 1,
+    "vol_price_mix": 0.79
+  }
 }
