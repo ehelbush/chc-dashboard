@@ -1785,6 +1785,8 @@ function App() {
   const [committedParams, setCommittedParams] = useState(null); // snapshot from ticker_params.json
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [bulkProgress, setBulkProgress] = useState(null); // {current, total, ticker, results: {}}
+  const [paramsSortCfg, setParamsSortCfg] = useState({key:"ticker",dir:1});
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
   // Load local ticker data + screener data
@@ -1970,22 +1972,15 @@ function App() {
     analyzeTicker(s, years, c.vol_price_mix, {volFlag: c.vol_flag, priceFlag: c.price_flag, buyThreshold: c.buy_threshold, sellThreshold: c.sell_threshold});
   };
 
-  const optimizeTicker = async () => {
-    const s = symbol.toUpperCase().trim();
-    if (!s) return;
-    setOptimizing(true);
-    setOptimizeResult("");
-    setError(null);
-
-    // Fetch price data
+  // Core optimizer: returns {best, trainMetrics, testMetrics, totalCombos} or null
+  const runOptimizer = async (s, evalYears, recLimit, onProgress) => {
     let dates, closes, volumes;
-    const yfData = await fetchYahooData(s, years + 1);
+    const yfData = await fetchYahooData(s, evalYears + 1);
     if (yfData && !yfData.error) { dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; }
     else if (localData && localData[s]) { dates = localData[s].d; closes = localData[s].c; volumes = localData[s].v; }
-    if (!dates) { setError("No data for " + s); setOptimizing(false); return; }
+    if (!dates) return null;
 
-    // Train/test split: optimize on first 80%, validate on last 20%
-    const evalDays = years * 252;
+    const evalDays = evalYears * 252;
     const totalDays = dates.length;
     const startIdx = totalDays > evalDays ? totalDays - evalDays : 0;
     const evalLen = totalDays - startIdx;
@@ -1995,57 +1990,45 @@ function App() {
     const trainVolumes = volumes.slice(0, splitIdx);
     const trainYears = Math.max(1, Math.round((trainDates.length - startIdx) / 252));
 
-    // Helper to run model on a data subset
-    const evalParams = (d, c, v, yr, vf, pf, mx, th) => {
-      const r = computeCHCModel(d, c, v, {
-        evalYears: yr, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th,
-      });
-      if (r && !r.error && r.trading) {
-        return { ret: r.trading.avg_yr_return || 0, rec: r.trading.recovery_period || 0 };
-      }
-      return null;
+    const ep = (d, c, v, yr, vf, pf, mx, th) => {
+      const r = computeCHCModel(d, c, v, { evalYears: yr, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th });
+      return (r && !r.error && r.trading) ? { ret: r.trading.avg_yr_return || 0, rec: r.trading.recovery_period || 0 } : null;
     };
 
-    // ── Stage 1: Coarse grid search on TRAINING data ──
-    setOptimizeResult("Stage 1: Coarse search...");
+    // Stage 1: Coarse
+    if (onProgress) onProgress("Stage 1: Coarse search...");
     await new Promise(ok => setTimeout(ok, 0));
     const coarseResults = [];
-    const vFlags = [0, 1, 2, 3];
-    const pFlags = [0, 1, 2, 3];
+    const vFlags = [0, 1, 2, 3], pFlags = [0, 1, 2, 3];
     const coarseMixes = []; for (let m = 0; m <= 1.001; m += 0.1) coarseMixes.push(Math.round(m * 100) / 100);
     const coarseThresholds = []; for (let t = -0.1; t <= 0.1001; t += 0.005) coarseThresholds.push(Math.round(t * 10000) / 10000);
     const coarseTotal = vFlags.length * pFlags.length * coarseMixes.length * coarseThresholds.length;
     let count = 0;
-
     for (const vf of vFlags) {
       for (const pf of pFlags) {
         for (const mx of coarseMixes) {
           for (const th of coarseThresholds) {
-            const m = evalParams(trainDates, trainCloses, trainVolumes, trainYears, vf, pf, mx, th);
+            const m = ep(trainDates, trainCloses, trainVolumes, trainYears, vf, pf, mx, th);
             if (m) coarseResults.push({vf, pf, mx, th, ...m});
             count++;
           }
         }
       }
-      setOptimizeResult("Stage 1: " + Math.round(count / coarseTotal * 100) + "%");
+      if (onProgress) onProgress("Stage 1: " + Math.round(count / coarseTotal * 100) + "%");
       await new Promise(ok => setTimeout(ok, 0));
     }
 
-    // Filter by recovery constraint, pick top 10 for refinement
-    const recLimit = maxRecovery || 5;
     let coarseCandidates = coarseResults.filter(r => r.rec > 0 && r.rec <= recLimit);
     if (coarseCandidates.length === 0) coarseCandidates = coarseResults.filter(r => r.rec > 0);
-    if (coarseCandidates.length === 0) { setOptimizeResult("No valid params found"); setOptimizing(false); return; }
+    if (coarseCandidates.length === 0) return null;
     coarseCandidates.sort((a, b) => b.ret - a.ret);
     const top10 = coarseCandidates.slice(0, 10);
 
-    // ── Stage 2: Fine grid search around top 10 on TRAINING data ──
-    setOptimizeResult("Stage 2: Fine search around top 10...");
+    // Stage 2: Fine
+    if (onProgress) onProgress("Stage 2: Fine search...");
     await new Promise(ok => setTimeout(ok, 0));
     const fineResults = [];
-    let fineCount = 0;
     const seen = new Set();
-
     for (const seed of top10) {
       const fineMixes = [];
       for (let m = Math.max(0, seed.mx - 0.1); m <= Math.min(1, seed.mx + 0.1) + 0.001; m += 0.02)
@@ -2053,70 +2036,156 @@ function App() {
       const fineThresholds = [];
       for (let t = seed.th - 0.01; t <= seed.th + 0.01 + 0.00001; t += 0.0005)
         fineThresholds.push(Math.round(t * 10000) / 10000);
-
-      for (const vf of [seed.vf]) {
-        for (const pf of [seed.pf]) {
-          for (const mx of fineMixes) {
-            for (const th of fineThresholds) {
-              const key = vf + "," + pf + "," + mx + "," + th;
-              if (seen.has(key)) continue;
-              seen.add(key);
-              const m = evalParams(trainDates, trainCloses, trainVolumes, trainYears, vf, pf, mx, th);
-              if (m) fineResults.push({vf, pf, mx, th, ...m});
-              fineCount++;
-            }
-          }
+      for (const mx of fineMixes) {
+        for (const th of fineThresholds) {
+          const key = seed.vf + "," + seed.pf + "," + mx + "," + th;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const m = ep(trainDates, trainCloses, trainVolumes, trainYears, seed.vf, seed.pf, mx, th);
+          if (m) fineResults.push({vf: seed.vf, pf: seed.pf, mx, th, ...m});
         }
       }
-      setOptimizeResult("Stage 2: refining seed " + (top10.indexOf(seed) + 1) + "/10...");
+      if (onProgress) onProgress("Stage 2: seed " + (top10.indexOf(seed) + 1) + "/10");
       await new Promise(ok => setTimeout(ok, 0));
     }
 
-    // Merge coarse + fine results, pick best on training data
     const allResults = [...coarseResults, ...fineResults];
     let allCandidates = allResults.filter(r => r.rec > 0 && r.rec <= recLimit);
     if (allCandidates.length === 0) allCandidates = allResults.filter(r => r.rec > 0);
-    if (allCandidates.length === 0) { setOptimizeResult("No valid params found"); setOptimizing(false); return; }
+    if (allCandidates.length === 0) return null;
     allCandidates.sort((a, b) => b.ret - a.ret);
     const best = allCandidates[0];
 
-    // ── Evaluate best params on FULL data (in-sample) and TEST data (out-of-sample) ──
-    const fullResult = evalParams(dates, closes, volumes, years, best.vf, best.pf, best.mx, best.th);
     const testYears = Math.max(1, Math.round((dates.length - splitIdx) / 252));
-    const testResult = evalParams(dates, closes, volumes, testYears, best.vf, best.pf, best.mx, best.th);
-    const totalCombos = coarseResults.length + fineResults.length;
+    const testResult = ep(dates, closes, volumes, testYears, best.vf, best.pf, best.mx, best.th);
 
-    // Apply best params
+    return {
+      best, totalCombos: allResults.length,
+      trainMetrics: { avg_yr_return: best.ret, recovery_period: best.rec },
+      testMetrics: testResult ? { avg_yr_return: testResult.ret, recovery_period: testResult.rec } : null,
+    };
+  };
+
+  const optimizeTicker = async () => {
+    const s = symbol.toUpperCase().trim();
+    if (!s) return;
+    setOptimizing(true);
+    setOptimizeResult("");
+    setError(null);
+
+    const result = await runOptimizer(s, years, maxRecovery || 5, msg => setOptimizeResult(msg));
+    if (!result) { setError("No valid params found for " + s); setOptimizing(false); return; }
+
+    const {best, trainMetrics, testMetrics, totalCombos} = result;
     setVolFlag(best.vf);
     setPriceFlag(best.pf);
     setMix(best.mx);
     setBuyThreshold(best.th);
     setSellThreshold(best.th);
 
-    const trainStr = (best.ret * 100).toFixed(1) + "% / " + best.rec.toFixed(1) + "yr";
-    const testStr = testResult ? (testResult.ret * 100).toFixed(1) + "% / " + testResult.rec.toFixed(1) + "yr" : "N/A";
-    setOptimizeResult(
-      "Train: " + trainStr + " | Test: " + testStr +
-      " (" + totalCombos.toLocaleString() + " combos, 2-stage)"
-    );
+    const trainStr = (trainMetrics.avg_yr_return * 100).toFixed(1) + "% / " + trainMetrics.recovery_period.toFixed(1) + "yr";
+    const testStr = testMetrics ? (testMetrics.avg_yr_return * 100).toFixed(1) + "% / " + testMetrics.recovery_period.toFixed(1) + "yr" : "N/A";
+    setOptimizeResult("Train: " + trainStr + " | Test: " + testStr + " (" + totalCombos.toLocaleString() + " combos, 2-stage)");
 
-    // Store optimization metadata for param history
     const now = new Date().toISOString();
     const prevParams = tickerParams && tickerParams[s] ? {...tickerParams[s]} : null;
     const optimizedEntry = {
       vol_flag: best.vf, price_flag: best.pf, vol_price_mix: best.mx,
       buy_threshold: best.th, sell_threshold: best.th,
-      last_optimized: now,
-      prev_params: prevParams,
-      train_metrics: { avg_yr_return: best.ret, recovery_period: best.rec },
-      test_metrics: testResult ? { avg_yr_return: testResult.ret, recovery_period: testResult.rec } : null,
+      last_optimized: now, prev_params: prevParams,
+      train_metrics: trainMetrics, test_metrics: testMetrics,
     };
     setTickerParams(prev => ({...prev, [s]: {...(prev && prev[s] || {}), ...optimizedEntry}}));
-
     setOptimizing(false);
-
-    // Run analysis with optimal params on full data
     analyzeTicker(s, years, best.mx, {volFlag: best.vf, priceFlag: best.pf, buyThreshold: best.th, sellThreshold: best.th});
+  };
+
+  // Optimize a single ticker from the Params tab (doesn't touch ribbon state)
+  const optimizeTickerForParams = async (ticker) => {
+    const recLimit = maxRecovery || 5;
+    const result = await runOptimizer(ticker, years, recLimit, msg => {
+      setBulkProgress(prev => prev ? {...prev, ticker: ticker + " " + msg} : null);
+    });
+    if (!result) return null;
+    const {best, trainMetrics, testMetrics} = result;
+    const now = new Date().toISOString();
+    const prevParams = tickerParams && tickerParams[ticker] ? {...tickerParams[ticker]} : null;
+    const entry = {
+      vol_flag: best.vf, price_flag: best.pf, vol_price_mix: best.mx,
+      buy_threshold: best.th, sell_threshold: best.th,
+      last_optimized: now, prev_params: prevParams,
+      train_metrics: trainMetrics, test_metrics: testMetrics,
+    };
+    setTickerParams(prev => ({...prev, [ticker]: {...(prev && prev[ticker] || {}), ...entry}}));
+    return entry;
+  };
+
+  // Bulk optimize all 25 tickers
+  const optimizeAll = async () => {
+    const tickers = SEED_DATA.map(t => t.ticker);
+    setBulkProgress({current: 0, total: tickers.length, ticker: "", results: {}});
+    for (let i = 0; i < tickers.length; i++) {
+      const t = tickers[i];
+      setBulkProgress(prev => ({...prev, current: i, ticker: t + " ..."}));
+      const entry = await optimizeTickerForParams(t);
+      setBulkProgress(prev => ({...prev, current: i + 1, ticker: t + (entry ? " done" : " failed"), results: {...prev.results, [t]: entry}}));
+    }
+    setBulkProgress(prev => prev ? {...prev, ticker: "Complete!"} : null);
+  };
+
+  // Commit a single ticker's params to GitHub
+  const commitSingleParam = async (ticker) => {
+    const p = tickerParams && tickerParams[ticker];
+    if (!p) return false;
+    const paramObj = {
+      vol_flag: p.vol_flag, price_flag: p.price_flag, vol_price_mix: p.vol_price_mix,
+      buy_threshold: p.buy_threshold, sell_threshold: p.sell_threshold,
+    };
+    if (p.last_optimized) paramObj.last_optimized = p.last_optimized;
+    if (p.train_metrics) paramObj.train_metrics = p.train_metrics;
+    if (p.test_metrics) paramObj.test_metrics = p.test_metrics;
+    try {
+      const resp = await fetch("/api/save_params", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ticker, params: paramObj}),
+      });
+      if (!resp.ok) return false;
+      setCommittedParams(prev => ({...prev, [ticker]: {...paramObj}}));
+      return true;
+    } catch { return false; }
+  };
+
+  // Commit all staged params in one pass
+  const commitAll = async () => {
+    setSaving(true);
+    setSaveMsg("Saving all params...");
+    // Build full params object from current tickerParams, keeping only core fields
+    const full = {};
+    const tickers = SEED_DATA.map(t => t.ticker);
+    for (const t of tickers) {
+      const p = tickerParams && tickerParams[t];
+      if (p) {
+        full[t] = {
+          vol_flag: p.vol_flag, price_flag: p.price_flag, vol_price_mix: p.vol_price_mix,
+          buy_threshold: p.buy_threshold, sell_threshold: p.sell_threshold,
+        };
+        if (p.last_optimized) full[t].last_optimized = p.last_optimized;
+        if (p.train_metrics) full[t].train_metrics = p.train_metrics;
+        if (p.test_metrics) full[t].test_metrics = p.test_metrics;
+      }
+    }
+    try {
+      const resp = await fetch("/api/save_params", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({params: full, message: "Update all ticker params"}),
+      });
+      if (!resp.ok) throw new Error("Save failed");
+      setCommittedParams(JSON.parse(JSON.stringify(full)));
+      setSaveMsg("All params committed!");
+    } catch (e) {
+      setSaveMsg("Error: " + e.message);
+    }
+    setSaving(false);
   };
 
   if (loading) return <div className="app"><div className="loading"><div className="spinner"></div> Loading dashboard...</div></div>;
@@ -2125,7 +2194,7 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.4.0</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.5.0</span></div>
       </div>
 
       <div className="nav-tabs">
@@ -2134,6 +2203,7 @@ function App() {
         <div className={"nav-tab"+(page==="portfolio"&&view!=="detail"?" active":"")} onClick={()=>{setPage("portfolio");setView("dashboard");}}>Select Assets</div>
         <div className={"nav-tab"+(page==="screener"&&view!=="detail"?" active":"")} onClick={()=>{setPage("screener");setView("dashboard");}}>Asset Screener</div>
         <div className={"nav-tab"+(page==="builder"?" active":"")} onClick={()=>{setPage("builder");setView("dashboard");}}>Portfolio Builder</div>
+        <div className={"nav-tab"+(page==="params"?" active":"")} onClick={()=>{setPage("params");setView("dashboard");}}>Params</div>
         <div className={"nav-tab"+(page==="definitions"?" active":"")} onClick={()=>{setPage("definitions");setView("dashboard");}}>Definitions</div>
         <div className={"nav-tab"+(page==="changelog"?" active":"")} onClick={()=>{setPage("changelog");setView("dashboard");}}>Changelog</div>
       </div>
@@ -2257,6 +2327,116 @@ function App() {
         <PortfolioBuilder screenerData={screenerData} onSelect={handleSelect}/>
       )}
 
+      {view==="dashboard"&&page==="params"&&(
+        <div>
+          <div className="card">
+            <div className="card-title" style={{marginBottom:12}}>
+              Model Parameters
+              <span style={{color:"var(--text2)",fontWeight:400,fontSize:12,marginLeft:12}}>
+                {SEED_DATA.length} tickers {"\u2014"} click Optimize to find best params, Commit to save to GitHub
+              </span>
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+              <div className="cg" style={{marginRight:8}}>
+                <label style={{fontSize:10}}>Eval Period</label>
+                <select value={years} onChange={e=>setYears(Number(e.target.value))} style={{fontSize:12}}>
+                  <option value={1}>1 Year</option><option value={2}>2 Years</option><option value={3}>3 Years</option>
+                  <option value={5}>5 Years</option><option value={7}>7 Years</option><option value={10}>10 Years</option>
+                </select>
+              </div>
+              <div className="cg" style={{marginRight:8}}>
+                <label style={{fontSize:10}}>Max Recovery (yrs)</label>
+                <input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:70,fontSize:12}}/>
+              </div>
+              <button onClick={optimizeAll} disabled={bulkProgress && bulkProgress.current !== bulkProgress.total} style={{background:"var(--bg3)",border:"1px solid var(--border)",fontSize:12}}>
+                {bulkProgress && bulkProgress.current !== bulkProgress.total ? "Optimizing " + bulkProgress.current + "/" + bulkProgress.total + "..." : "Optimize All"}
+              </button>
+              <button onClick={commitAll} disabled={saving} style={{background:"var(--green)",color:"#000",border:"none",fontWeight:600,fontSize:12}}>
+                {saving ? "Saving..." : "Commit All"}
+              </button>
+              {bulkProgress && <span style={{fontSize:10,color:"var(--blue)"}}>{bulkProgress.ticker}</span>}
+              {saveMsg && <span style={{fontSize:10,color:saveMsg.startsWith("Error")?"var(--red)":"var(--green)"}}>{saveMsg}</span>}
+            </div>
+            <div style={{overflowX:"auto"}}>
+              <table>
+                <thead><tr>
+                  {[
+                    {key:"ticker",label:"Ticker"}, {key:"vol_flag",label:"Vol"}, {key:"price_flag",label:"Price"},
+                    {key:"vol_price_mix",label:"Mix"}, {key:"buy_threshold",label:"Threshold"},
+                    {key:"train_ret",label:"Train Ret"}, {key:"train_rec",label:"Train Rec"},
+                    {key:"test_ret",label:"Test Ret"}, {key:"test_rec",label:"Test Rec"},
+                    {key:"last_optimized",label:"Last Optimized"},
+                  ].map(col => (
+                    <th key={col.key} onClick={()=>setParamsSortCfg(prev => ({key:col.key, dir: prev.key===col.key ? -prev.dir : 1}))}
+                      style={{cursor:"pointer",fontSize:10,whiteSpace:"nowrap",userSelect:"none"}}>
+                      {col.label}{paramsSortCfg.key===col.key ? (paramsSortCfg.dir===1?" \u25B2":" \u25BC") : ""}
+                    </th>
+                  ))}
+                  <th style={{fontSize:10}}>Actions</th>
+                </tr></thead>
+                <tbody>
+                  {SEED_DATA.map(t => t.ticker).map(ticker => {
+                    const p = tickerParams && tickerParams[ticker];
+                    const c = committedParams && committedParams[ticker];
+                    const isChanged = p && c && (p.vol_flag !== c.vol_flag || p.price_flag !== c.price_flag ||
+                      p.vol_price_mix !== c.vol_price_mix || p.buy_threshold !== c.buy_threshold || p.sell_threshold !== c.sell_threshold);
+                    const isNew = p && !c;
+                    return {ticker, p, isChanged, isNew};
+                  }).sort((a, b) => {
+                    const k = paramsSortCfg.key;
+                    let av, bv;
+                    if (k === "ticker") { av = a.ticker; bv = b.ticker; }
+                    else if (k === "train_ret") { av = a.p && a.p.train_metrics ? a.p.train_metrics.avg_yr_return : -999; bv = b.p && b.p.train_metrics ? b.p.train_metrics.avg_yr_return : -999; }
+                    else if (k === "train_rec") { av = a.p && a.p.train_metrics ? a.p.train_metrics.recovery_period : 999; bv = b.p && b.p.train_metrics ? b.p.train_metrics.recovery_period : 999; }
+                    else if (k === "test_ret") { av = a.p && a.p.test_metrics ? a.p.test_metrics.avg_yr_return : -999; bv = b.p && b.p.test_metrics ? b.p.test_metrics.avg_yr_return : -999; }
+                    else if (k === "test_rec") { av = a.p && a.p.test_metrics ? a.p.test_metrics.recovery_period : 999; bv = b.p && b.p.test_metrics ? b.p.test_metrics.recovery_period : 999; }
+                    else if (k === "last_optimized") { av = a.p && a.p.last_optimized || ""; bv = b.p && b.p.last_optimized || ""; }
+                    else { av = a.p ? a.p[k] : 0; bv = b.p ? b.p[k] : 0; }
+                    if (av === bv) return 0;
+                    return (av > bv ? 1 : -1) * paramsSortCfg.dir;
+                  }).map(({ticker, p, isChanged, isNew}) => (
+                    <tr key={ticker} style={{background: isChanged || isNew ? "rgba(255,165,0,0.06)" : "transparent"}}>
+                      <td style={{fontWeight:600,cursor:"pointer",color:"var(--blue)"}} onClick={()=>handleSelect(ticker)}>{ticker}</td>
+                      <td>{p ? p.vol_flag : "\u2014"}</td>
+                      <td>{p ? p.price_flag : "\u2014"}</td>
+                      <td>{p ? p.vol_price_mix.toFixed(2) : "\u2014"}</td>
+                      <td>{p ? p.buy_threshold.toFixed(4) : "\u2014"}</td>
+                      <td style={{color: p && p.train_metrics ? "var(--green)" : "var(--text2)"}}>
+                        {p && p.train_metrics ? (p.train_metrics.avg_yr_return * 100).toFixed(1) + "%" : "\u2014"}
+                      </td>
+                      <td>{p && p.train_metrics ? p.train_metrics.recovery_period.toFixed(1) + "y" : "\u2014"}</td>
+                      <td style={{color: p && p.test_metrics ? "var(--green)" : "var(--text2)"}}>
+                        {p && p.test_metrics ? (p.test_metrics.avg_yr_return * 100).toFixed(1) + "%" : "\u2014"}
+                      </td>
+                      <td>{p && p.test_metrics ? p.test_metrics.recovery_period.toFixed(1) + "y" : "\u2014"}</td>
+                      <td style={{fontSize:10,color:"var(--text2)"}}>
+                        {p && p.last_optimized ? new Date(p.last_optimized).toLocaleDateString() : "\u2014"}
+                      </td>
+                      <td style={{whiteSpace:"nowrap"}}>
+                        <button onClick={async ()=>{
+                          setBulkProgress({current:0,total:1,ticker:ticker+" ..."});
+                          const entry = await optimizeTickerForParams(ticker);
+                          setBulkProgress({current:1,total:1,ticker:ticker+(entry?" done":" failed")});
+                        }} disabled={bulkProgress && bulkProgress.current !== bulkProgress.total}
+                          style={{fontSize:10,padding:"2px 8px",marginRight:4,background:"var(--bg3)",border:"1px solid var(--border)",cursor:"pointer"}}>Opt</button>
+                        {(isChanged || isNew) && <button onClick={()=>commitSingleParam(ticker)}
+                          disabled={saving}
+                          style={{fontSize:10,padding:"2px 8px",marginRight:4,background:"var(--green)",color:"#000",border:"none",cursor:"pointer",fontWeight:600}}>Save</button>}
+                        {(isChanged) && <button onClick={()=>{
+                          const cc = committedParams[ticker];
+                          setTickerParams(prev => ({...prev, [ticker]: {...cc}}));
+                        }}
+                          style={{fontSize:10,padding:"2px 8px",background:"var(--bg3)",border:"1px solid var(--border)",cursor:"pointer"}}>Rev</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {view==="dashboard"&&page==="definitions"&&(
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Definitions</div>
@@ -2273,6 +2453,14 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v4.5.0",date:"2026-04-02",items:[
+              "Params tab — table of all 25 tickers with committed params, train/test metrics, and last optimized date",
+              "Per-row Optimize, Save, and Revert actions on each ticker",
+              "Optimize All button — queues optimization for every ticker with progress indicator",
+              "Commit All button — saves all staged params to GitHub in one API call",
+              "Commit/Revert buttons on Analysis ribbon with unsaved changes indicator",
+              "save_params API endpoint — persists ticker_params.json to GitHub via the GitHub API",
+            ]},
             {ver:"v4.4.0",date:"2026-04-01",items:[
               "Two-stage optimizer — coarse grid (-0.1 to +0.1 threshold, 0.1 mix step) then fine refinement around top 10 results",
               "Train/test split — optimizes on first 80% of data, reports both in-sample and out-of-sample performance",
