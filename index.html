@@ -92,6 +92,38 @@
     .page-btn:hover { color:var(--text); }
     .page-btn.active { background:var(--blue-bg); color:var(--blue); border-color:var(--blue); }
     .page-btn:disabled { opacity:0.3; cursor:not-allowed; }
+    /* Mobile responsive */
+    .nav-tabs { position:relative; }
+    .hamburger { display:none; background:var(--bg3); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; }
+    @media(max-width:768px){
+      .hamburger { display:flex; align-items:center; gap:8px; }
+      .nav-tabs { flex-direction:column; }
+      .nav-tabs .nav-tab { display:none; }
+      .nav-tabs.open .nav-tab { display:block; width:100%; border-radius:8px; border:1px solid var(--border); margin-bottom:2px; }
+      .app { padding:12px; }
+      .header h1 { font-size:17px; }
+      .header h1 span[style] { display:none; }
+      .metrics-grid { grid-template-columns:1fr 1fr; gap:8px; }
+      .metric-value { font-size:18px; }
+      .controls { gap:8px; }
+      .cg label { font-size:9px; }
+      input,select { padding:6px 8px; font-size:13px; }
+      .search-input { width:100%; }
+      .screener-controls { flex-direction:column; align-items:stretch; gap:8px; }
+      .screener-stats { margin-left:0; text-align:center; }
+      .card { padding:14px; }
+      table { font-size:11px; }
+      th { padding:6px 6px; font-size:10px; }
+      td { padding:6px 6px; }
+      .dg { grid-template-columns:1fr; }
+      .filter-btn { padding:6px 12px; font-size:12px; }
+      .pagination { flex-wrap:wrap; }
+    }
+    @media(max-width:480px){
+      .metrics-grid { grid-template-columns:1fr; }
+      .metric-card { padding:12px; }
+      .header { flex-direction:column; align-items:flex-start; }
+    }
   </style>
 </head>
 <body>
@@ -484,6 +516,29 @@ function StrengthBar({value}) {
   );
 }
 
+const COL_TIPS = {
+  ticker:"Ticker symbol",
+  buy_sell_call:"Model signal: Buy (above buy threshold) or Sell (below sell threshold)",
+  call_strength:"Raw combined signal value. Positive = Buy leaning, negative = Sell leaning. Magnitude = conviction",
+  sector:"Industry sector from Yahoo Finance",
+  market_cap:"Total market capitalization (price \u00D7 shares outstanding)",
+  last_yr_return:"Total return over the last 252 trading days using the CHC trading strategy",
+  av_yrly_return:"Compound annual growth rate (CAGR) over the full evaluation period",
+  est_next_yr_return:"Estimate: (Last Year + Average Year) / 2 \u2014 blends momentum with long-term average",
+  current_loss:"Current drawdown from all-time high. 0% = at peak",
+  stat3_loss:"Expected worst-case loss: Avg Loss + 3\u00D7 Std Dev. Covers 99%+ of observed losses",
+  recovery_period:"Estimated years to recover from max loss given average yearly return",
+  quantity:"Number of shares held",
+  avg_cost:"Average purchase price per share (cost basis)",
+  current_price:"Latest market price",
+  market_value:"Current market value (price \u00D7 quantity)",
+  port_weight:"Position weight as percentage of total portfolio",
+  total_gain:"Unrealized gain/loss in dollars (current value minus cost basis)",
+  total_gain_pct:"Unrealized gain/loss as percentage of cost basis",
+  day_gain_pct:"Today\u2019s price change as percentage",
+  symbol:"Ticker symbol",
+};
+
 function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
   const sorted = useMemo(() => {
     const {key,dir}=sortCfg;
@@ -496,7 +551,7 @@ function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
 
   const SH = ({label,field}) => {
     const active=sortCfg.key===field;
-    return <th onClick={()=>onSort(field)}>{label}<span className="sa">{active?(sortCfg.dir===1?"\u25B2":"\u25BC"):"\u21C5"}</span></th>;
+    return <th onClick={()=>onSort(field)} title={COL_TIPS[field]||""}>{label}<span className="sa">{active?(sortCfg.dir===1?"\u25B2":"\u25BC"):"\u21C5"}</span></th>;
   };
 
   return (
@@ -633,6 +688,7 @@ function PortfolioBuilder({screenerData, onSelect}) {
   const [portfolio, setPortfolio] = useState(null);
   const [building, setBuilding] = useState(false);
   const [progress, setProgress] = useState("");
+  const [failedTickers, setFailedTickers] = useState([]);
   const setC = (k, v) => setConstraints(prev => ({...prev, [k]: v}));
 
   const sectors = screenerData && screenerData.results
@@ -642,6 +698,7 @@ function PortfolioBuilder({screenerData, onSelect}) {
     if (!screenerData || !screenerData.results) return;
     setBuilding(true);
     setPortfolio(null);
+    setFailedTickers([]);
 
     // 1. Filter candidates
     let candidates = screenerData.results.filter(t => {
@@ -669,6 +726,7 @@ function PortfolioBuilder({screenerData, onSelect}) {
 
     // 3. Fetch price history for each ticker + SPY
     const priceData = {};
+    const failed = [];
     const syms = [...selected.map(t => t.ticker), "SPY"];
     for (let i = 0; i < syms.length; i++) {
       const sym = syms[i];
@@ -677,9 +735,12 @@ function PortfolioBuilder({screenerData, onSelect}) {
         const d = await fetchYahooData(sym, 6);
         if (d && d.dates && d.dates.length > 100) {
           priceData[sym] = {dates: d.dates, closes: d.closes};
+        } else {
+          failed.push(sym);
         }
-      } catch (e) { /* skip */ }
+      } catch (e) { failed.push(sym); }
     }
+    if (failed.length > 0) setFailedTickers(failed);
 
     // 4. Align dates — find common date set
     const dateSets = Object.values(priceData).map(d => new Set(d.dates));
@@ -807,6 +868,13 @@ function PortfolioBuilder({screenerData, onSelect}) {
           <button onClick={buildPortfolio} disabled={building || !screenerData}>{building ? "Building..." : "Build Portfolio"}</button>
         </div>
         {progress && <div style={{marginTop:12,fontSize:12,color:"var(--blue)"}}>{progress}</div>}
+        {failedTickers.length > 0 && !building && (
+          <div style={{marginTop:8,padding:"8px 12px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:6,fontSize:12,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={{color:"var(--red)",fontWeight:600}}>Failed to fetch:</span>
+            <span style={{color:"var(--text2)"}}>{failedTickers.join(", ")}</span>
+            <button onClick={buildPortfolio} style={{fontSize:11,padding:"3px 10px",background:"var(--bg3)",border:"1px solid var(--border)",marginLeft:"auto"}}>Retry</button>
+          </div>
+        )}
       </div>
 
       {portfolio && (
@@ -941,6 +1009,20 @@ function MarketScreener({onSelect}) {
             Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
           </button>
           {activeFilterCount > 0 && <button className="filter-btn" onClick={()=>{setFilters({});setPage(0);}}>Clear Filters</button>}
+          <select onChange={e=>{
+            const v = e.target.value;
+            if (v === "strong_buy") { setFilter("buy"); setFilters({market_cap_min:1e9, recovery_max:5, avg_yr_min:10}); setShowFilters(true); }
+            else if (v === "large_cap_recovery") { setFilter("all"); setFilters({market_cap_min:1e10, recovery_max:3}); setShowFilters(true); }
+            else if (v === "high_momentum") { setFilter("buy"); setFilters({market_cap_min:1e9, last_yr_min:20}); setShowFilters(true); }
+            else if (v === "mega_cap") { setFilter("all"); setFilters({market_cap_min:1e11}); setShowFilters(true); }
+            setPage(0); e.target.value = "";
+          }} style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",padding:"7px 12px",borderRadius:8,fontSize:12,cursor:"pointer"}}>
+            <option value="">Presets...</option>
+            <option value="strong_buy">Strong Buy ($1B+, 10%+ avg, rec {"\u2264"}5yr)</option>
+            <option value="large_cap_recovery">Large Cap Recovery ($10B+, rec {"\u2264"}3yr)</option>
+            <option value="high_momentum">High Momentum (Buy, 20%+ last yr)</option>
+            <option value="mega_cap">Mega Cap ($100B+)</option>
+          </select>
           <span className="screener-stats">Showing {filtered.length.toLocaleString()} tickers</span>
         </div>
 
@@ -984,7 +1066,12 @@ function MarketScreener({onSelect}) {
           <div className="pagination">
             <button className="page-btn" disabled={page===0} onClick={()=>setPage(0)}>{"\u00AB"}</button>
             <button className="page-btn" disabled={page===0} onClick={()=>setPage(p=>p-1)}>{"\u2039"} Prev</button>
-            <span style={{fontSize:13,color:"var(--text2)",padding:"0 8px"}}>Page {page+1} of {totalPages}</span>
+            <span style={{fontSize:13,color:"var(--text2)",padding:"0 8px"}}>Page </span>
+            <input type="number" min={1} max={totalPages} value={page+1}
+              onChange={e=>{const v=parseInt(e.target.value); if(v>=1&&v<=totalPages) setPage(v-1);}}
+              onKeyDown={e=>{if(e.key==="Enter"){const v=parseInt(e.target.value); if(v>=1&&v<=totalPages) setPage(v-1);}}}
+              style={{width:50,padding:"4px 6px",fontSize:12,textAlign:"center"}}/>
+            <span style={{fontSize:13,color:"var(--text2)",padding:"0 8px"}}> of {totalPages}</span>
             <button className="page-btn" disabled={page>=totalPages-1} onClick={()=>setPage(p=>p+1)}>Next {"\u203A"}</button>
             <button className="page-btn" disabled={page>=totalPages-1} onClick={()=>setPage(totalPages-1)}>{"\u00BB"}</button>
           </div>
@@ -1720,7 +1807,7 @@ function SchwabAccount({onAnalyzeTicker}) {
                 {label:"Total Gain",field:"total_gain"},
                 {label:"Gain %",field:"total_gain_pct"},{label:"Day %",field:"day_gain_pct"}
               ].map(col => (
-                <th key={col.field} onClick={()=>handleHoldSort(col.field)}>
+                <th key={col.field} onClick={()=>handleHoldSort(col.field)} title={COL_TIPS[col.field]||""}>
                   {col.label}<span className="sa">{holdSort.key===col.field?(holdSort.dir===1?"\u25B2":"\u25BC"):"\u21C5"}</span>
                 </th>
               ))}
@@ -1850,6 +1937,7 @@ function App() {
   const [bulkProgress, setBulkProgress] = useState(null); // {current, total, ticker, results: {}}
   const [paramsSortCfg, setParamsSortCfg] = useState({key:"ticker",dir:1});
   const [asymmetric, setAsymmetric] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const [schwabAuth, setSchwabAuth] = useState(null);
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
@@ -2470,7 +2558,7 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.9.0</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.0.0</span></div>
       </div>
 
       {schwabAuth && (schwabAuth.needs_reauth || schwabAuth.refresh_days_remaining <= 3) && (
@@ -2481,15 +2569,19 @@ function App() {
         </div>
       )}
 
-      <div className="nav-tabs">
-        <div className={"nav-tab"+(page==="account"&&view!=="detail"?" active":"")} onClick={()=>{setPage("account");setView("dashboard");}}>Performance</div>
-        <div className={"nav-tab"+(page==="analysis"?" active":"")} onClick={()=>{setPage("analysis");setView(tickerDetail?"detail":"dashboard");}}>Analysis</div>
-        <div className={"nav-tab"+(page==="portfolio"&&view!=="detail"?" active":"")} onClick={()=>{setPage("portfolio");setView("dashboard");}}>Select Assets</div>
-        <div className={"nav-tab"+(page==="screener"&&view!=="detail"?" active":"")} onClick={()=>{setPage("screener");setView("dashboard");}}>Asset Screener</div>
-        <div className={"nav-tab"+(page==="builder"?" active":"")} onClick={()=>{setPage("builder");setView("dashboard");}}>Portfolio Builder</div>
-        <div className={"nav-tab"+(page==="params"?" active":"")} onClick={()=>{setPage("params");setView("dashboard");}}>Params</div>
-        <div className={"nav-tab"+(page==="definitions"?" active":"")} onClick={()=>{setPage("definitions");setView("dashboard");}}>Definitions</div>
-        <div className={"nav-tab"+(page==="changelog"?" active":"")} onClick={()=>{setPage("changelog");setView("dashboard");}}>Changelog</div>
+      <div className={"nav-tabs"+(navOpen?" open":"")}>
+        <button className="hamburger" onClick={()=>setNavOpen(p=>!p)}>
+          {navOpen ? "\u2715" : "\u2630"} {({account:"Performance",analysis:"Analysis",portfolio:"Select Assets",screener:"Asset Screener",builder:"Portfolio Builder",params:"Params",definitions:"Definitions",changelog:"Changelog"})[page] || "Menu"}
+        </button>
+        {[
+          ["account","Performance"],["analysis","Analysis"],["portfolio","Select Assets"],
+          ["screener","Asset Screener"],["builder","Portfolio Builder"],["params","Params"],
+          ["definitions","Definitions"],["changelog","Changelog"]
+        ].map(([key,label])=>(
+          <div key={key} className={"nav-tab"+(page===key?" active":"")} onClick={()=>{
+            setPage(key);setView(key==="analysis"&&tickerDetail?"detail":"dashboard");setNavOpen(false);
+          }}>{label}</div>
+        ))}
       </div>
 
       {page==="analysis"&&(
@@ -2827,6 +2919,13 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.0.0",date:"2026-04-02",items:[
+              "Mobile responsive design \u2014 hamburger nav menu on small screens, responsive grids, touch-friendly inputs",
+              "Inline tooltips on all table column headers across every tab \u2014 hover any header to see what the metric means",
+              "Screener filter presets dropdown \u2014 Strong Buy, Large Cap Recovery, High Momentum, Mega Cap one-click filters",
+              "Portfolio Builder error visibility \u2014 shows which tickers failed to fetch with a Retry button",
+              "Screener page jump \u2014 type a page number directly instead of clicking through 200+ pages",
+            ]},
             {ver:"v4.9.0",date:"2026-04-02",items:[
               "Today's P&L and Unrealized Gain summary cards replace Accounts/Equity cards for at-a-glance portfolio performance",
               "Toggleable benchmarks \u2014 check/uncheck SPY, QQQ (Nasdaq 100), IWM, DIA in the benchmark comparison section",
