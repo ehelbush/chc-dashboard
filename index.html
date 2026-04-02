@@ -2633,7 +2633,8 @@ function App() {
       {page==="analysis"&&(
         <div>
           <div className="card">
-            <div className="controls" style={{flexWrap:"wrap"}}>
+            {/* Ticker + Period — shared by both Analyze and Optimize */}
+            <div style={{display:"flex",gap:12,alignItems:"flex-end",flexWrap:"wrap",marginBottom:12}}>
               <div className="cg"><label>Ticker Symbol</label><input type="text" value={symbol} onChange={e=>{setSymbol(e.target.value.toUpperCase()); loadTickerParams(e.target.value);}} onKeyDown={handleKey} placeholder="e.g. MSFT" style={{width:120}}/></div>
               <div className="cg"><label>Evaluation Period</label>
                 <select value={years} onChange={e=>setYears(Number(e.target.value))}>
@@ -2641,30 +2642,52 @@ function App() {
                   <option value={5}>5 Years</option><option value={7}>7 Years</option><option value={10}>10 Years</option>
                 </select>
               </div>
-              <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
-              <div className="cg"><label>Vol Flag</label>
-                <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:90}}>
-                  <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
-                </select>
+            </div>
+
+            {/* Two-column layout: Analyze params | Optimize params */}
+            <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"stretch"}}>
+              {/* Analyze: uses these model params to run a single backtest */}
+              <div style={{flex:"1 1 400px",background:"var(--bg3)",borderRadius:8,padding:"10px 14px",border:"1px solid var(--border)"}}>
+                <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Model Params <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(used by Analyze)</span></div>
+                <div className="controls" style={{flexWrap:"wrap",gap:10}}>
+                  <div className="cg"><label>Vol Flag</label>
+                    <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:90}}>
+                      <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
+                    </select>
+                  </div>
+                  <div className="cg"><label>Price Flag</label>
+                    <select value={priceFlag} onChange={e=>setPriceFlag(Number(e.target.value))} style={{width:90}}>
+                      <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
+                    </select>
+                  </div>
+                  <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
+                  <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
+                  <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
+                  <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
+                </div>
               </div>
-              <div className="cg"><label>Price Flag</label>
-                <select value={priceFlag} onChange={e=>setPriceFlag(Number(e.target.value))} style={{width:90}}>
-                  <option value={0}>0 (1d)</option><option value={1}>1 (50d)</option><option value={2}>2 (100d)</option><option value={3}>3 (120d)</option>
-                </select>
+
+              {/* Optimize: searches for best params automatically */}
+              <div style={{flex:"1 1 280px",background:"var(--bg3)",borderRadius:8,padding:"10px 14px",border:"1px solid var(--border)"}}>
+                <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Optimizer Settings <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(constraints for Optimize)</span></div>
+                <div className="controls" style={{flexWrap:"wrap",gap:10}}>
+                  <div className="cg"><label>Max Recovery (yrs)</label><input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:80}}/></div>
+                  <div className="cg"><label style={{fontSize:9}}>Asym Thresholds</label><input type="checkbox" checked={asymmetric} onChange={e=>setAsymmetric(e.target.checked)} style={{width:16,height:16,margin:"4px 0 0"}}/></div>
+                  <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{optimizing?"Optimizing...":"Optimize"}</button>
+                </div>
+                <div style={{fontSize:10,color:"var(--text2)",marginTop:6}}>Searches ~11K param combos using Ticker + Period above. Best result populates Model Params.</div>
               </div>
-              <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
-              <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
-              <div className="cg"><label>Max Recovery (yrs)</label><input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:80}}/></div>
-              <div className="cg"><label style={{fontSize:9}}>Asym Thresholds</label><input type="checkbox" checked={asymmetric} onChange={e=>setAsymmetric(e.target.checked)} style={{width:16,height:16,margin:"4px 0 0"}}/></div>
-              <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
-              <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{optimizing?"Optimizing...":"Optimize"}</button>
+            </div>
+
+            {/* Action buttons and status */}
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:10}}>
               {hasUncommittedChanges && <button onClick={commitParams} disabled={saving||optimizing} style={{background:"var(--green)",color:"#000",border:"none",fontWeight:600}}>{saving?"Saving...":"Commit"}</button>}
               {hasUncommittedChanges && <button onClick={revertParams} disabled={saving||optimizing} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>Revert</button>}
               {view==="detail"&&<button className="btn-s" onClick={()=>setView("dashboard")}>{"\u2190"} Back</button>}
-              {tickerParams && tickerParams[symbol] && !hasUncommittedChanges && <span style={{fontSize:10,color:"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>Saved params loaded</span>}
-              {hasUncommittedChanges && <span style={{fontSize:10,color:"orange",alignSelf:"flex-end",paddingBottom:6}}>Unsaved changes</span>}
-              {optimizeResult && <span style={{fontSize:10,color:"var(--blue)",alignSelf:"flex-end",paddingBottom:6}}>{optimizeResult}</span>}
-              {saveMsg && <span style={{fontSize:10,color:saveMsg.startsWith("Error")?"var(--red)":"var(--green)",alignSelf:"flex-end",paddingBottom:6}}>{saveMsg}</span>}
+              {tickerParams && tickerParams[symbol] && !hasUncommittedChanges && <span style={{fontSize:10,color:"var(--green)",paddingBottom:2}}>Saved params loaded</span>}
+              {hasUncommittedChanges && <span style={{fontSize:10,color:"orange",paddingBottom:2}}>Unsaved changes</span>}
+              {optimizeResult && <span style={{fontSize:10,color:"var(--blue)",paddingBottom:2}}>{optimizeResult}</span>}
+              {saveMsg && <span style={{fontSize:10,color:saveMsg.startsWith("Error")?"var(--red)":"var(--green)",paddingBottom:2}}>{saveMsg}</span>}
             </div>
             {error&&<div className="error-msg">{error}</div>}
           </div>
