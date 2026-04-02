@@ -194,18 +194,31 @@ def get_all_tickers():
     # Method 2: Download from public sources
     import requests
 
-    # NASDAQ traded list
-    try:
-        url = "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/all/all_tickers.txt"
-        r = requests.get(url, timeout=15)
-        if r.ok:
-            for line in r.text.strip().split('\n'):
-                sym = line.strip().upper()
-                if sym and sym.isalpha() and len(sym) <= 5:
-                    tickers.add(sym)
-            print(f"  GitHub list: {len(tickers)} tickers")
-    except:
-        pass
+    # NASDAQ traded list — try multiple sources with retries
+    ticker_urls = [
+        "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/all/all_tickers.txt",
+        "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/nyse/nyse_tickers.txt",
+        "https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/nasdaq/nasdaq_tickers.txt",
+    ]
+    for url in ticker_urls:
+        for attempt in range(3):
+            try:
+                r = requests.get(url, timeout=30)
+                if r.ok:
+                    before = len(tickers)
+                    for line in r.text.strip().split('\n'):
+                        sym = line.strip().upper()
+                        if sym and sym.isalpha() and len(sym) <= 5:
+                            tickers.add(sym)
+                    print(f"  {url.split('/')[-1]}: +{len(tickers) - before} tickers (total: {len(tickers)})")
+                    break
+            except Exception as e:
+                if attempt < 2:
+                    print(f"  Retry {attempt+1} for {url.split('/')[-1]}: {e}")
+                    import time as _time
+                    _time.sleep(2 * (attempt + 1))
+                else:
+                    print(f"  Failed {url.split('/')[-1]} after 3 attempts: {e}")
 
     # Method 3: S&P 500 + common large caps as fallback
     if len(tickers) < 100:
@@ -278,6 +291,15 @@ def main():
     print("Getting ticker list...")
     all_tickers = get_all_tickers()
     print(f"Found {len(all_tickers)} tickers to process")
+
+    # Safeguard: if ticker list is much smaller than existing data, keep existing tickers
+    # This prevents a failed ticker source from wiping out a good screener run
+    if existing and len(all_tickers) < len(existing) * 0.5:
+        print(f"  WARNING: ticker list ({len(all_tickers)}) is much smaller than existing data ({len(existing)})")
+        print(f"  Keeping existing tickers and adding any new ones from today's list")
+        # Merge: keep all existing, only fetch new ones from today's list
+        all_tickers = sorted(set(all_tickers) | set(existing.keys()))
+        print(f"  Merged ticker count: {len(all_tickers)}")
 
     # Skip already-fetched tickers
     to_fetch = [t for t in all_tickers if t not in existing]
