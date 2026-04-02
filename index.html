@@ -1417,6 +1417,59 @@ function SchwabAccount({onAnalyzeTicker}) {
   const [historyRange, setHistoryRange] = useState("ALL");
   const [balanceRange, setBalanceRange] = useState("ALL");
   const [drawdownRange, setDrawdownRange] = useState("ALL");
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
+
+  const refreshPrices = async () => {
+    if (!schwabData || refreshing) return;
+    setRefreshing(true);
+    try {
+      const allH = [];
+      schwabData.accounts.forEach(a => a.holdings && a.holdings.forEach(h => { if (h.symbol) allH.push(h); }));
+      const symbols = [...new Set(allH.map(h => h.symbol))].filter(s => s !== "MMDA1" && s !== "CASH");
+      if (symbols.length === 0) { setRefreshing(false); return; }
+
+      const resp = await fetch(`/api/yahoo_quotes?symbols=${symbols.join(",")}`);
+      const data = await resp.json();
+      if (!data.quotes) { setRefreshing(false); return; }
+
+      // Deep-clone schwabData and update holdings with live prices
+      const updated = JSON.parse(JSON.stringify(schwabData));
+      let newTotalValue = 0;
+      let newDayGain = 0;
+      updated.accounts.forEach(a => {
+        let acctDayGain = 0;
+        (a.holdings || []).forEach(h => {
+          const q = data.quotes[h.symbol];
+          if (q && q.price != null) {
+            const oldMV = h.market_value || 0;
+            h.current_price = q.price;
+            h.market_value = q.price * (h.quantity || 0);
+            h.total_gain = h.quantity > 0 ? (q.price - (h.avg_cost || 0)) * h.quantity : 0;
+            h.total_gain_pct = h.avg_cost > 0 ? (q.price / h.avg_cost - 1) : 0;
+            h.day_gain_pct = q.change_pct != null ? q.change_pct : h.day_gain_pct;
+            const dayChange = q.change != null ? q.change * (h.quantity || 0) : 0;
+            acctDayGain += dayChange;
+          }
+          newTotalValue += h.market_value || 0;
+        });
+        a.day_gain = acctDayGain;
+        newDayGain += acctDayGain;
+      });
+      // Update portfolio summary
+      if (updated.portfolio_summary) {
+        updated.portfolio_summary.total_value = newTotalValue;
+      }
+      const mktState = Object.values(data.quotes).find(q => q.market_state);
+      updated._live_market_state = mktState ? mktState.market_state : null;
+
+      setSchwabData(updated);
+      setLastRefresh(new Date());
+    } catch (e) {
+      console.error("Refresh failed:", e);
+    }
+    setRefreshing(false);
+  };
 
   const filterByRange = (data, range) => {
     if (!data) return [];
@@ -1541,7 +1594,7 @@ function SchwabAccount({onAnalyzeTicker}) {
       {(isStale || auth.needs_reauth) && (
         <div style={{background:isStale?"rgba(239,68,68,0.12)":"rgba(234,179,8,0.12)", border:`1px solid ${isStale?"var(--red)":"var(--gold)"}`, borderRadius:10, padding:"12px 20px", marginBottom:20, display:"flex", alignItems:"center", gap:12, fontSize:13}}>
           <span style={{fontSize:18}}>{isStale ? "\u26A0" : "\u23F0"}</span>
-          <div>
+          <div style={{flex:1}}>
             <span style={{fontWeight:600,color:isStale?"var(--red)":"var(--gold)"}}>
               {isStale ? "Using cached data" : `Re-auth needed in ${auth.refresh_days_remaining} days`}
             </span>
@@ -1549,6 +1602,13 @@ function SchwabAccount({onAnalyzeTicker}) {
               Last synced: {syncedAt}
               {isStale && " \u2014 Run schwab_auth.py to reconnect"}
             </span>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {lastRefresh && <span style={{color:"var(--text2)",fontSize:11}}>Prices: {lastRefresh.toLocaleTimeString()}</span>}
+            <button onClick={refreshPrices} disabled={refreshing}
+              style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"4px 12px",borderRadius:6,fontSize:12,cursor:refreshing?"wait":"pointer",opacity:refreshing?0.6:1,whiteSpace:"nowrap"}}>
+              {refreshing ? "Refreshing..." : "\u21BB Refresh Prices"}
+            </button>
           </div>
         </div>
       )}
@@ -1558,6 +1618,13 @@ function SchwabAccount({onAnalyzeTicker}) {
           <span style={{color:"var(--green)",fontSize:10}}>{"\u25CF"}</span>
           <span style={{color:"var(--green)",fontWeight:600}}>Live</span>
           <span style={{color:"var(--text2)"}}>Synced {syncedAt} {"\u2014"} Token valid for {auth.refresh_days_remaining} days</span>
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+            {lastRefresh && <span style={{color:"var(--text2)",fontSize:11}}>Prices as of {lastRefresh.toLocaleTimeString()}{schwabData._live_market_state === "PRE" ? " (Pre-market)" : schwabData._live_market_state === "POST" || schwabData._live_market_state === "POSTPOST" ? " (After-hours)" : schwabData._live_market_state === "CLOSED" ? " (Market closed)" : ""}</span>}
+            <button onClick={refreshPrices} disabled={refreshing}
+              style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"4px 12px",borderRadius:6,fontSize:12,cursor:refreshing?"wait":"pointer",opacity:refreshing?0.6:1,whiteSpace:"nowrap"}}>
+              {refreshing ? "Refreshing..." : "\u21BB Refresh Prices"}
+            </button>
+          </div>
         </div>
       )}
 
