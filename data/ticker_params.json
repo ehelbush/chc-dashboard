@@ -1,293 +1,418 @@
 {
   "AAPL": {
-    "buy_threshold": -0.05,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 1,
-    "sell_threshold": -0.05,
-    "train_metrics": {
-      "avg_yr_return": 0.178227,
-      "recovery_period": 4.95
+    "buy_threshold": -0.0625,
+    "last_optimized": "2026-04-02T22:10:56.122Z",
+    "price_flag": 0,
+    "sell_threshold": -0.0625,
+    "test_metrics": {
+      "avg_yr_return": 0.347228,
+      "recovery_period": 1.28
     },
-    "vol_flag": 2,
-    "vol_price_mix": 0.8
+    "train_metrics": {
+      "avg_yr_return": 0.201822,
+      "recovery_period": 3.69
+    },
+    "vol_flag": 1,
+    "vol_price_mix": 0.62
   },
   "AMD": {
-    "buy_threshold": 0.01,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 0,
-    "sell_threshold": 0.01,
-    "train_metrics": {
-      "avg_yr_return": 0.282327,
-      "recovery_period": 3.07
+    "buy_threshold": 0.0095,
+    "last_optimized": "2026-04-02T22:14:07.578Z",
+    "price_flag": 1,
+    "sell_threshold": 0.0095,
+    "test_metrics": {
+      "avg_yr_return": -0.039235,
+      "recovery_period": 999
     },
-    "vol_flag": 2,
-    "vol_price_mix": 1
+    "train_metrics": {
+      "avg_yr_return": 0.305532,
+      "recovery_period": 2.48
+    },
+    "vol_flag": 1,
+    "vol_price_mix": 0.12
   },
   "ANET": {
-    "buy_threshold": -0.0065,
-    "price_flag": 2,
-    "sell_threshold": -0.0065,
-    "vol_flag": 1,
-    "vol_price_mix": 0.95
-  },
-  "AVGO": {
     "buy_threshold": 0,
+    "last_optimized": "2026-04-02T22:10:14.519Z",
     "price_flag": 2,
     "sell_threshold": 0,
-    "vol_flag": 0,
-    "vol_price_mix": 0.15
-  },
-  "COST": {
-    "buy_threshold": -0.0004,
-    "price_flag": 2,
-    "sell_threshold": -0.0004,
-    "vol_flag": 1,
-    "vol_price_mix": 0.05
-  },
-  "GLDM": {
-    "buy_threshold": -0.08,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 3,
-    "sell_threshold": -0.08,
-    "train_metrics": {
-      "avg_yr_return": 0.255929,
-      "recovery_period": 1.87
+    "test_metrics": {
+      "avg_yr_return": -0.197865,
+      "recovery_period": 999
     },
-    "vol_flag": 1,
-    "vol_price_mix": 0.6
-  },
-  "GOOG": {
-    "buy_threshold": 0,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 1,
-    "sell_threshold": 0,
     "train_metrics": {
-      "avg_yr_return": 0.226487,
-      "recovery_period": 3.34
-    },
-    "vol_flag": 1,
-    "vol_price_mix": 0.4
-  },
-  "IWF": {
-    "buy_threshold": -0.02,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 2,
-    "sell_threshold": -0.02,
-    "train_metrics": {
-      "avg_yr_return": 0.162124,
-      "recovery_period": 3.54
-    },
-    "vol_flag": 2,
-    "vol_price_mix": 0.4
-  },
-  "LLY": {
-    "buy_threshold": -0.03,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 0,
-    "sell_threshold": -0.03,
-    "train_metrics": {
-      "avg_yr_return": 0.416148,
-      "recovery_period": 1.77
+      "avg_yr_return": 0.56202,
+      "recovery_period": 1.51
     },
     "vol_flag": 3,
     "vol_price_mix": 0
   },
-  "MSFT": {
-    "buy_threshold": 0.006,
-    "last_optimized": "2026-04-02T06:38:02.615Z",
+  "AVGO": {
+    "buy_threshold": -0.003,
+    "last_optimized": "2026-04-02T22:10:05.962Z",
     "price_flag": 2,
-    "sell_threshold": 0.006,
+    "sell_threshold": -0.003,
     "test_metrics": {
-      "avg_yr_return": -0.122596,
+      "avg_yr_return": -0.065084,
       "recovery_period": 999
     },
     "train_metrics": {
-      "avg_yr_return": 0.136041,
-      "recovery_period": 2.85
+      "avg_yr_return": 0.514132,
+      "recovery_period": 1.91
+    },
+    "vol_flag": 2,
+    "vol_price_mix": 0.02
+  },
+  "COST": {
+    "buy_threshold": -0.027,
+    "last_optimized": "2026-04-02T22:10:30.928Z",
+    "price_flag": 0,
+    "sell_threshold": -0.027,
+    "test_metrics": {
+      "avg_yr_return": -0.02821,
+      "recovery_period": 999
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.343738,
+      "recovery_period": 1.83
+    },
+    "vol_flag": 1,
+    "vol_price_mix": 0
+  },
+  "GLDM": {
+    "buy_threshold": -0.007,
+    "last_optimized": "2026-04-02T22:09:56.789Z",
+    "price_flag": 0,
+    "sell_threshold": -0.007,
+    "test_metrics": {
+      "avg_yr_return": 0.771741,
+      "recovery_period": 0.37
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.20192,
+      "recovery_period": 1.82
+    },
+    "vol_flag": 3,
+    "vol_price_mix": 0.16
+  },
+  "GOOG": {
+    "buy_threshold": 0.0055,
+    "last_optimized": "2026-04-02T22:10:52.196Z",
+    "price_flag": 1,
+    "sell_threshold": 0.0055,
+    "test_metrics": {
+      "avg_yr_return": 0.875674,
+      "recovery_period": 0.46
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.132218,
+      "recovery_period": 4.06
+    },
+    "vol_flag": 2,
+    "vol_price_mix": 0.18
+  },
+  "IWF": {
+    "buy_threshold": 0.0755,
+    "last_optimized": "2026-04-02T22:10:19.051Z",
+    "price_flag": 0,
+    "sell_threshold": 0.0755,
+    "test_metrics": {
+      "avg_yr_return": 0.166063,
+      "recovery_period": 1.11
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.151707,
+      "recovery_period": 2.18
+    },
+    "vol_flag": 1,
+    "vol_price_mix": 0.72
+  },
+  "LLY": {
+    "buy_threshold": -0.024,
+    "last_optimized": "2026-04-02T22:10:22.788Z",
+    "price_flag": 0,
+    "sell_threshold": -0.024,
+    "test_metrics": {
+      "avg_yr_return": 0.012595,
+      "recovery_period": 58.14
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.499434,
+      "recovery_period": 0.84
+    },
+    "vol_flag": 0,
+    "vol_price_mix": 0.02
+  },
+  "MSFT": {
+    "buy_threshold": 0.006,
+    "last_optimized": "2026-04-02T22:14:30.825Z",
+    "price_flag": 2,
+    "sell_threshold": 0.006,
+    "test_metrics": {
+      "avg_yr_return": -0.097764,
+      "recovery_period": 999
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.138158,
+      "recovery_period": 2.8
     },
     "vol_flag": 1,
     "vol_price_mix": 0.1
   },
   "MU": {
-    "buy_threshold": -0.08,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": 0.0775,
+    "last_optimized": "2026-04-02T22:14:22.084Z",
     "price_flag": 2,
-    "sell_threshold": -0.08,
+    "sell_threshold": 0.0775,
+    "test_metrics": {
+      "avg_yr_return": 1.313437,
+      "recovery_period": 0.55
+    },
     "train_metrics": {
-      "avg_yr_return": 0.541551,
-      "recovery_period": 2.65
+      "avg_yr_return": 0.12668,
+      "recovery_period": 3.85
     },
     "vol_flag": 1,
-    "vol_price_mix": 0.6
+    "vol_price_mix": 0.4
   },
   "NRG": {
-    "buy_threshold": 0,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": -0.0905,
+    "last_optimized": "2026-04-02T22:10:35.181Z",
     "price_flag": 0,
-    "sell_threshold": 0,
-    "train_metrics": {
-      "avg_yr_return": 0.387001,
-      "recovery_period": 2.45
+    "sell_threshold": -0.0905,
+    "test_metrics": {
+      "avg_yr_return": -0.042004,
+      "recovery_period": 999
     },
-    "vol_flag": 3,
-    "vol_price_mix": 1
+    "train_metrics": {
+      "avg_yr_return": 0.404686,
+      "recovery_period": 1.89
+    },
+    "vol_flag": 1,
+    "vol_price_mix": 0.2
   },
   "NVDA": {
-    "buy_threshold": -0.01,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": -0.0175,
+    "last_optimized": "2026-04-02T22:10:01.331Z",
     "price_flag": 2,
-    "sell_threshold": -0.01,
+    "sell_threshold": -0.0175,
+    "test_metrics": {
+      "avg_yr_return": 0.026071,
+      "recovery_period": 15.9
+    },
     "train_metrics": {
-      "avg_yr_return": 0.713155,
-      "recovery_period": 1.95
+      "avg_yr_return": 0.911246,
+      "recovery_period": 1.54
     },
     "vol_flag": 2,
-    "vol_price_mix": 0.4
+    "vol_price_mix": 0.38
   },
   "PANW": {
-    "buy_threshold": -0.02,
-    "price_flag": 1,
-    "sell_threshold": -0.02,
+    "buy_threshold": -0.05,
+    "last_optimized": "2026-04-02T22:13:58.545Z",
+    "price_flag": 2,
+    "sell_threshold": -0.05,
+    "test_metrics": {
+      "avg_yr_return": -0.045858,
+      "recovery_period": 999
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.41029,
+      "recovery_period": 2.12
+    },
     "vol_flag": 0,
-    "vol_price_mix": 0.48
+    "vol_price_mix": 0.06
   },
   "PLTR": {
-    "buy_threshold": -0.1,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": -0.0855,
+    "last_optimized": "2026-04-02T22:10:10.245Z",
     "price_flag": 2,
-    "sell_threshold": -0.1,
-    "train_metrics": {
-      "avg_yr_return": 0.675609,
-      "recovery_period": 3.67
+    "sell_threshold": -0.0855,
+    "test_metrics": {
+      "avg_yr_return": -0.212774,
+      "recovery_period": 999
     },
-    "vol_flag": 2,
-    "vol_price_mix": 0.8
+    "train_metrics": {
+      "avg_yr_return": 0.866131,
+      "recovery_period": 2.15
+    },
+    "vol_flag": 0,
+    "vol_price_mix": 0.08
   },
   "PM": {
-    "buy_threshold": -0.0039,
-    "price_flag": 2,
-    "sell_threshold": -0.0039,
-    "vol_flag": 1,
-    "vol_price_mix": 0.8
-  },
-  "QQQ": {
-    "buy_threshold": -0.02,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 2,
-    "sell_threshold": -0.02,
-    "train_metrics": {
-      "avg_yr_return": 0.161421,
-      "recovery_period": 3.13
-    },
-    "vol_flag": 1,
-    "vol_price_mix": 0.4
-  },
-  "RCL": {
-    "buy_threshold": -0.01,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 3,
-    "sell_threshold": -0.01,
-    "train_metrics": {
-      "avg_yr_return": 0.514671,
-      "recovery_period": 2.08
-    },
-    "vol_flag": 3,
-    "vol_price_mix": 0.2
-  },
-  "SHOP": {
-    "buy_threshold": -0.06,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": -0.0005,
+    "last_optimized": "2026-04-02T22:13:54.804Z",
     "price_flag": 0,
-    "sell_threshold": -0.06,
-    "train_metrics": {
-      "avg_yr_return": 0.305309,
-      "recovery_period": 3.9
+    "sell_threshold": -0.0005,
+    "test_metrics": {
+      "avg_yr_return": -0.140825,
+      "recovery_period": 999
     },
-    "vol_flag": 3,
-    "vol_price_mix": 1
-  },
-  "SIVR": {
-    "buy_threshold": -0.02,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 0,
-    "sell_threshold": -0.02,
     "train_metrics": {
-      "avg_yr_return": 0.429229,
-      "recovery_period": 2.72
+      "avg_yr_return": 0.260793,
+      "recovery_period": 1.26
     },
     "vol_flag": 2,
-    "vol_price_mix": 0.2
+    "vol_price_mix": 0.04
+  },
+  "QQQ": {
+    "buy_threshold": -0.0035,
+    "last_optimized": "2026-04-02T22:10:27.318Z",
+    "price_flag": 2,
+    "sell_threshold": -0.0035,
+    "test_metrics": {
+      "avg_yr_return": 0.036195,
+      "recovery_period": 4.74
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.154728,
+      "recovery_period": 2.03
+    },
+    "vol_flag": 2,
+    "vol_price_mix": 0.42
+  },
+  "RCL": {
+    "buy_threshold": -0.105,
+    "last_optimized": "2026-04-02T22:11:26.278Z",
+    "price_flag": 0,
+    "sell_threshold": -0.105,
+    "test_metrics": {
+      "avg_yr_return": -0.396463,
+      "recovery_period": 999
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.635719,
+      "recovery_period": 1.71
+    },
+    "vol_flag": 2,
+    "vol_price_mix": 0.64
+  },
+  "SHOP": {
+    "buy_threshold": -0.0245,
+    "last_optimized": "2026-04-02T22:11:30.600Z",
+    "price_flag": 0,
+    "sell_threshold": -0.0245,
+    "test_metrics": {
+      "avg_yr_return": 0.039604,
+      "recovery_period": 22.96
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.403911,
+      "recovery_period": 2.89
+    },
+    "vol_flag": 1,
+    "vol_price_mix": 0.7
+  },
+  "SIVR": {
+    "buy_threshold": -0.0175,
+    "last_optimized": "2026-04-02T22:10:39.201Z",
+    "price_flag": 0,
+    "sell_threshold": -0.0175,
+    "test_metrics": {
+      "avg_yr_return": 2.128765,
+      "recovery_period": 0.84
+    },
+    "train_metrics": {
+      "avg_yr_return": 0.294191,
+      "recovery_period": 1.43
+    },
+    "vol_flag": 2,
+    "vol_price_mix": 0.16
   },
   "SPY": {
-    "buy_threshold": 0,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 1,
-    "sell_threshold": 0,
+    "buy_threshold": -0.0525,
+    "last_optimized": "2026-04-02T22:10:43.858Z",
+    "price_flag": 0,
+    "sell_threshold": -0.0525,
+    "test_metrics": {
+      "avg_yr_return": 0.213778,
+      "recovery_period": 0.96
+    },
     "train_metrics": {
-      "avg_yr_return": 0.103072,
-      "recovery_period": 3.94
+      "avg_yr_return": 0.118496,
+      "recovery_period": 3.99
     },
     "vol_flag": 0,
     "vol_price_mix": 0
   },
   "TPR": {
-    "buy_threshold": -0.06,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 3,
-    "sell_threshold": -0.06,
+    "buy_threshold": -0.069,
+    "last_optimized": "2026-04-02T22:14:03.083Z",
+    "price_flag": 1,
+    "sell_threshold": -0.069,
+    "test_metrics": {
+      "avg_yr_return": 0.780531,
+      "recovery_period": 0.59
+    },
     "train_metrics": {
-      "avg_yr_return": 0.460206,
-      "recovery_period": 2.87
+      "avg_yr_return": 0.348461,
+      "recovery_period": 3.63
     },
     "vol_flag": 2,
-    "vol_price_mix": 0.6
+    "vol_price_mix": 0.74
   },
   "TSLA": {
-    "buy_threshold": 0.02,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": -0.102,
+    "last_optimized": "2026-04-02T22:14:26.234Z",
     "price_flag": 0,
-    "sell_threshold": 0.02,
-    "train_metrics": {
-      "avg_yr_return": 0.308883,
-      "recovery_period": 3.02
+    "sell_threshold": -0.102,
+    "test_metrics": {
+      "avg_yr_return": 0.025184,
+      "recovery_period": 33.99
     },
-    "vol_flag": 3,
-    "vol_price_mix": 0
+    "train_metrics": {
+      "avg_yr_return": 0.462781,
+      "recovery_period": 3.01
+    },
+    "vol_flag": 0,
+    "vol_price_mix": 0.12
   },
   "TSM": {
-    "buy_threshold": -0.04,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
-    "price_flag": 2,
-    "sell_threshold": -0.04,
+    "buy_threshold": -0.0045,
+    "last_optimized": "2026-04-02T22:14:13.101Z",
+    "price_flag": 3,
+    "sell_threshold": -0.0045,
+    "test_metrics": {
+      "avg_yr_return": 0.203176,
+      "recovery_period": 2.16
+    },
     "train_metrics": {
-      "avg_yr_return": 0.296741,
+      "avg_yr_return": 0.206298,
       "recovery_period": 3.82
     },
     "vol_flag": 1,
-    "vol_price_mix": 0.4
+    "vol_price_mix": 0.16
   },
   "USO": {
-    "buy_threshold": -0.08,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": -0.084,
+    "last_optimized": "2026-04-02T22:14:16.888Z",
     "price_flag": 0,
-    "sell_threshold": -0.08,
+    "sell_threshold": -0.084,
+    "test_metrics": {
+      "avg_yr_return": 1.793136,
+      "recovery_period": 0.3
+    },
     "train_metrics": {
-      "avg_yr_return": 0.271298,
-      "recovery_period": 3.45
+      "avg_yr_return": 0.193665,
+      "recovery_period": 4.68
     },
     "vol_flag": 2,
-    "vol_price_mix": 0.2
+    "vol_price_mix": 0.22
   },
   "XLE": {
-    "buy_threshold": -0.06,
-    "last_optimized": "2026-04-02T06:40:41.122Z",
+    "buy_threshold": -0.09,
+    "last_optimized": "2026-04-02T22:10:47.546Z",
     "price_flag": 0,
-    "sell_threshold": -0.06,
-    "train_metrics": {
-      "avg_yr_return": 0.285456,
-      "recovery_period": 2.4
+    "sell_threshold": -0.09,
+    "test_metrics": {
+      "avg_yr_return": 0.314585,
+      "recovery_period": 0.62
     },
-    "vol_flag": 3,
-    "vol_price_mix": 1
+    "train_metrics": {
+      "avg_yr_return": 0.371597,
+      "recovery_period": 1.34
+    },
+    "vol_flag": 0,
+    "vol_price_mix": 0.1
   }
 }
