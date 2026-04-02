@@ -1002,6 +1002,7 @@ function SchwabAccount({onAnalyzeTicker}) {
   const [loading, setLoading] = useState(true);
   const [holdSort, setHoldSort] = useState({key:"market_value",dir:-1});
   const [benchView, setBenchView] = useState("returns"); // returns | drawdown
+  const [enabledBenchmarks, setEnabledBenchmarks] = useState({SPY:true, QQQ:true, IWM:true, DIA:true});
   const [historyData, setHistoryData] = useState(null);
   const [historyRange, setHistoryRange] = useState("ALL");
   const [balanceRange, setBalanceRange] = useState("ALL");
@@ -1085,6 +1086,12 @@ function SchwabAccount({onAnalyzeTicker}) {
   const totalPortValue = allHoldings.reduce((s, h) => s + (h.market_value || 0), 0);
   const holdingsWithWeight = allHoldings.map(h => ({...h, port_weight: totalPortValue > 0 ? h.market_value / totalPortValue : 0}));
 
+  // Aggregate P&L
+  const dayGainTotal = schwabData.accounts.reduce((s, a) => s + (a.day_gain || 0), 0);
+  const dayGainPct = totalPortValue > 0 ? dayGainTotal / (totalPortValue - dayGainTotal) * 100 : 0;
+  const unrealizedGain = allHoldings.reduce((s, h) => s + (h.total_gain || 0), 0);
+  const unrealizedPct = totalPortValue > 0 ? unrealizedGain / (totalPortValue - unrealizedGain) : 0;
+
   // Sort holdings
   const sortedHoldings = [...holdingsWithWeight].sort((a,b) => {
     const av = a[holdSort.key] != null ? a[holdSort.key] : 0;
@@ -1152,19 +1159,23 @@ function SchwabAccount({onAnalyzeTicker}) {
           <div className="metric-sub">{summary.positions_count||0} positions across {summary.accounts_count||0} account(s)</div>
         </div>
         <div className="metric-card">
+          <div className="metric-label">Today's P&L</div>
+          <div className="metric-value" style={{color:dayGainTotal >= 0 ? "var(--green)" : "var(--red)"}}>
+            {dayGainTotal >= 0 ? "+" : "-"}${Math.abs(dayGainTotal).toLocaleString("en-US",{maximumFractionDigits:0})}
+          </div>
+          <div className="metric-sub" style={{color:dayGainPct >= 0 ? "var(--green)" : "var(--red)"}}>{dayGainPct >= 0 ? "+" : ""}{dayGainPct.toFixed(2)}% today</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Unrealized Gain</div>
+          <div className="metric-value" style={{color:unrealizedGain >= 0 ? "var(--green)" : "var(--red)"}}>
+            {unrealizedGain >= 0 ? "+" : "-"}${Math.abs(unrealizedGain).toLocaleString("en-US",{maximumFractionDigits:0})}
+          </div>
+          <div className="metric-sub">{pct(unrealizedPct)} total return</div>
+        </div>
+        <div className="metric-card">
           <div className="metric-label">Cash Balance</div>
           <div className="metric-value">${(summary.total_cash||0).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
           <div className="metric-sub">{summary.total_equity ? ((summary.total_cash / summary.total_equity * 100).toFixed(1) + "% of equity") : ""}</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-label">Total Equity</div>
-          <div className="metric-value">${(summary.total_equity||0).toLocaleString("en-US",{maximumFractionDigits:0})}</div>
-          <div className="metric-sub">Liquidation value</div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-label">Accounts</div>
-          <div className="metric-value" style={{fontSize:20}}>{schwabData.accounts.map(a => a.account_id).join(", ")}</div>
-          <div className="metric-sub">{schwabData.accounts.map(a => a.account_type).join(", ")}</div>
         </div>
       </div>
 
@@ -1567,7 +1578,7 @@ function SchwabAccount({onAnalyzeTicker}) {
                   <tr>
                     <th style={{padding:"6px 8px",fontSize:11,border:"none"}}></th>
                     {monthNames.map(m => <th key={m} style={{padding:"6px 8px",textAlign:"center",fontSize:11,border:"none",fontWeight:600}}>{m}</th>)}
-                    <th style={{padding:"6px 8px",textAlign:"center",fontSize:11,border:"none",fontWeight:600}}>YTD</th>
+                    <th style={{padding:"6px 8px",textAlign:"center",fontSize:11,border:"none",fontWeight:600,borderLeft:"2px solid var(--border)"}}>YTD</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1589,6 +1600,7 @@ function SchwabAccount({onAnalyzeTicker}) {
                       })}
                       <td style={{
                         padding:"6px 10px",textAlign:"center",borderRadius:4,border:"none",
+                        borderLeft:"2px solid var(--border)",
                         background:getColor(ytdByYear[y]),
                         color:"var(--text)",fontWeight:700,fontSize:11,minWidth:56,
                       }}>
@@ -1606,16 +1618,26 @@ function SchwabAccount({onAnalyzeTicker}) {
       {/* Benchmark comparison */}
       {Object.keys(benchmarks).length > 0 && (
         <div className="card">
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
             <div className="card-title" style={{margin:0}}>Portfolio vs Benchmarks</div>
-            <div style={{display:"flex",gap:4}}>
-              <button className={"filter-btn"+(benchView==="returns"?" active":"")} onClick={()=>setBenchView("returns")} style={{padding:"4px 12px",fontSize:12}}>Compare Returns</button>
-              <button className={"filter-btn"+(benchView==="drawdown"?" active":"")} onClick={()=>setBenchView("drawdown")} style={{padding:"4px 12px",fontSize:12}}>Compare Drawdowns</button>
+            <div style={{display:"flex",gap:12,alignItems:"center"}}>
+              <div style={{display:"flex",gap:8}}>
+                {Object.keys(bNames).map(sym => (
+                  <label key={sym} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,cursor:"pointer",color:enabledBenchmarks[sym] ? (bColors[sym]||"var(--text)") : "var(--text2)",opacity:enabledBenchmarks[sym]?1:0.5}}>
+                    <input type="checkbox" checked={!!enabledBenchmarks[sym]} onChange={()=>setEnabledBenchmarks(p=>({...p,[sym]:!p[sym]}))} style={{accentColor:bColors[sym]||"var(--blue)"}} />
+                    {sym}
+                  </label>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:4}}>
+                <button className={"filter-btn"+(benchView==="returns"?" active":"")} onClick={()=>setBenchView("returns")} style={{padding:"4px 12px",fontSize:12}}>Returns</button>
+                <button className={"filter-btn"+(benchView==="drawdown"?" active":"")} onClick={()=>setBenchView("drawdown")} style={{padding:"4px 12px",fontSize:12}}>Drawdowns</button>
+              </div>
             </div>
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16}}>
-            {Object.entries(benchmarks).map(([sym, bm]) => {
+            {Object.entries(benchmarks).filter(([sym]) => enabledBenchmarks[sym]).map(([sym, bm]) => {
               const color = bColors[sym] || "#9498a8";
               const name = bNames[sym] || sym;
               const val = benchView === "returns" ? bm.one_yr_return : bm.max_drawdown;
@@ -1723,24 +1745,49 @@ function SchwabAccount({onAnalyzeTicker}) {
         </div>
       </div>
 
-      {/* Top Holdings Donut (text-based) */}
-      {summary.top_holdings && summary.top_holdings.length > 0 && (
-        <div className="card">
-          <div className="card-title">Top 10 Holdings by Weight</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {summary.top_holdings.map((h, i) => (
-              <div key={h.symbol} style={{display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:60,fontSize:13,fontWeight:700,color:"var(--blue)"}}>{h.symbol}</div>
-                <div style={{flex:1,background:"var(--bg3)",borderRadius:4,height:24,position:"relative",overflow:"hidden"}}>
-                  <div style={{position:"absolute",left:0,top:0,height:"100%",width:(h.weight*100)+"%",background:sColors[i%sColors.length],borderRadius:4,opacity:0.6}}/>
-                  <span style={{position:"absolute",left:8,top:3,fontSize:11,fontWeight:600,color:"var(--text)"}}>{(h.weight*100).toFixed(1)}%</span>
-                </div>
-                <div style={{width:80,textAlign:"right",fontSize:12,color:"var(--text2)"}}>${(h.value/1000).toFixed(1)}k</div>
+      {/* Portfolio Concentration */}
+      {summary.top_holdings && summary.top_holdings.length >= 5 && (() => {
+        const top5Weight = summary.top_holdings.slice(0,5).reduce((s,h) => s + h.weight, 0);
+        const hhi = holdingsWithWeight.reduce((s,h) => s + Math.pow(h.port_weight*100, 2), 0);
+        const spyBm = benchmarks.SPY;
+        const alpha = spyBm ? ((summary.total_value > 0 && spyBm.annualized_return != null) ? null : null) : null;
+        return (
+          <div className="card">
+            <div className="card-title">Portfolio Concentration</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16,marginBottom:16}}>
+              <div style={{background:"var(--bg3)",borderRadius:8,padding:12}}>
+                <div style={{fontSize:11,color:"var(--text2)"}}>Top 5 Concentration</div>
+                <div style={{fontSize:20,fontWeight:700,color:top5Weight > 0.7 ? "var(--red)" : top5Weight > 0.5 ? "orange" : "var(--green)"}}>{(top5Weight*100).toFixed(1)}%</div>
+                <div style={{fontSize:11,color:"var(--text2)"}}>{top5Weight > 0.7 ? "Highly concentrated" : top5Weight > 0.5 ? "Moderately concentrated" : "Well diversified"}</div>
               </div>
-            ))}
+              <div style={{background:"var(--bg3)",borderRadius:8,padding:12}}>
+                <div style={{fontSize:11,color:"var(--text2)"}}>HHI (Herfindahl)</div>
+                <div style={{fontSize:20,fontWeight:700,color:hhi > 2500 ? "var(--red)" : hhi > 1500 ? "orange" : "var(--green)"}}>{hhi.toFixed(0)}</div>
+                <div style={{fontSize:11,color:"var(--text2)"}}>{hhi > 2500 ? "Concentrated" : hhi > 1500 ? "Moderate" : "Diversified"} ({holdingsWithWeight.length} positions)</div>
+              </div>
+              {spyBm && spyBm.annualized_return != null && (
+                <div style={{background:"var(--bg3)",borderRadius:8,padding:12}}>
+                  <div style={{fontSize:11,color:"var(--text2)"}}>SPY 1Y Return</div>
+                  <div style={{fontSize:20,fontWeight:700}} className={pc(spyBm.one_yr_return)}>{pct(spyBm.one_yr_return)}</div>
+                  <div style={{fontSize:11,color:"var(--text2)"}}>Annualized: {pct(spyBm.annualized_return)}</div>
+                </div>
+              )}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {summary.top_holdings.map((h, i) => (
+                <div key={h.symbol} style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{width:60,fontSize:13,fontWeight:700,color:"var(--blue)"}}>{h.symbol}</div>
+                  <div style={{flex:1,background:"var(--bg3)",borderRadius:4,height:24,position:"relative",overflow:"hidden"}}>
+                    <div style={{position:"absolute",left:0,top:0,height:"100%",width:(h.weight*100)+"%",background:sColors[i%sColors.length],borderRadius:4,opacity:0.6}}/>
+                    <span style={{position:"absolute",left:8,top:3,fontSize:11,fontWeight:600,color:"var(--text)"}}>{(h.weight*100).toFixed(1)}%</span>
+                  </div>
+                  <div style={{width:80,textAlign:"right",fontSize:12,color:"var(--text2)"}}>${(h.value/1000).toFixed(1)}k</div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Recent trades */}
       {schwabData.accounts.some(a => a.recent_trades && a.recent_trades.length > 0) && (
@@ -1752,15 +1799,19 @@ function SchwabAccount({onAnalyzeTicker}) {
                 <th>Date</th><th>Symbol</th><th>Type</th><th>Qty</th><th>Amount</th>
               </tr></thead>
               <tbody>
-                {schwabData.accounts.flatMap(a => a.recent_trades || []).slice(0, 20).map((t, i) => (
+                {schwabData.accounts.flatMap(a => a.recent_trades || []).slice(0, 20).map((t, i) => {
+                  const isBuy = /buy/i.test(t.type);
+                  const isSell = /sell/i.test(t.type);
+                  return (
                   <tr key={i}>
                     <td>{t.date ? t.date.substring(0,10) : "\u2014"}</td>
                     <td className="tc">{t.symbol || "\u2014"}</td>
-                    <td>{t.type}</td>
+                    <td style={{fontWeight:600,color:isBuy?"var(--green)":isSell?"var(--red)":"var(--text)"}}>{t.type}</td>
                     <td>{t.quantity ? t.quantity.toLocaleString() : "\u2014"}</td>
                     <td className={t.amount>=0?"pos":"neg"}>${Math.abs(t.amount).toLocaleString("en-US",{maximumFractionDigits:2})}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -2419,7 +2470,7 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.8.0</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.9.0</span></div>
       </div>
 
       {schwabAuth && (schwabAuth.needs_reauth || schwabAuth.refresh_days_remaining <= 3) && (
@@ -2776,6 +2827,13 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v4.9.0",date:"2026-04-02",items:[
+              "Today's P&L and Unrealized Gain summary cards replace Accounts/Equity cards for at-a-glance portfolio performance",
+              "Toggleable benchmarks \u2014 check/uncheck SPY, QQQ (Nasdaq 100), IWM, DIA in the benchmark comparison section",
+              "Portfolio Concentration card with Top-5 weight, HHI (Herfindahl) index, and concentration risk indicator",
+              "Buy/Sell color coding on Recent Trades \u2014 green for buys, red for sells",
+              "Monthly returns heatmap YTD column now visually separated with border",
+            ]},
             {ver:"v4.8.0",date:"2026-04-02",items:[
               "Fixed sector allocation \u2014 now shows real sectors (Technology, Healthcare, etc.) from holdings instead of Schwab asset-class grouping that just said 'EQUITY'",
               "Fixed day gain % \u2014 was showing 629% instead of 6.29% due to double percentage conversion",
