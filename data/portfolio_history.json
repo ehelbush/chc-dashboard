@@ -63100,65 +63100,65 @@
   },
   {
     "date": "2026-04-02",
-    "total_value": 1063886.57,
-    "total_equity": 1064730.19,
+    "total_value": 1062326.39,
+    "total_equity": 1063170.01,
     "cash_balance": 843.62,
-    "net_flows": -16446.27,
-    "day_gain": 15717.44,
+    "net_flows": -9054.85,
+    "day_gain": 7494.67,
     "positions_count": 9,
     "holdings": [
       {
         "symbol": "AVGO",
-        "market_value": 242082.66,
-        "weight": 0.2275,
+        "market_value": 242344.68,
+        "weight": 0.2281,
         "quantity": 794.0
       },
       {
         "symbol": "LLY",
-        "market_value": 188006.94,
-        "weight": 0.1767,
+        "market_value": 188254.44,
+        "weight": 0.1772,
         "quantity": 198.0
       },
       {
         "symbol": "ANET",
-        "market_value": 137006.0,
-        "weight": 0.1288,
+        "market_value": 136276.05,
+        "weight": 0.1283,
         "quantity": 1123.0
       },
       {
         "symbol": "COST",
-        "market_value": 97502.16,
+        "market_value": 97314.98,
         "weight": 0.0916,
         "quantity": 98.0
       },
       {
         "symbol": "PM",
-        "market_value": 88121.6,
-        "weight": 0.0828,
+        "market_value": 88071.02,
+        "weight": 0.0829,
         "quantity": 562.0
       },
       {
         "symbol": "TPR",
         "market_value": 84384.0,
-        "weight": 0.0793,
+        "weight": 0.0794,
         "quantity": 600.0
       },
       {
         "symbol": "NVDA",
-        "market_value": 78524.1,
-        "weight": 0.0738,
+        "market_value": 78551.58,
+        "weight": 0.0739,
         "quantity": 458.0
       },
       {
         "symbol": "GLDM",
-        "market_value": 75314.15,
-        "weight": 0.0708,
+        "market_value": 74156.85,
+        "weight": 0.0698,
         "quantity": 815.0
       },
       {
         "symbol": "GOOG",
-        "market_value": 72944.96,
-        "weight": 0.0686,
+        "market_value": 72972.79,
+        "weight": 0.0687,
         "quantity": 253.0
       }
     ],
