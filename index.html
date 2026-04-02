@@ -2068,10 +2068,40 @@ function App() {
     const testYears = Math.max(1, Math.round((dates.length - splitIdx) / 252));
     const testResult = ep(dates, closes, volumes, testYears, best.vf, best.pf, best.mx, best.bt, best.st);
 
+    // ── Walk-forward validation: split eval period into folds ──
+    if (onProgress) onProgress("Walk-forward validation...");
+    await new Promise(ok => setTimeout(ok, 0));
+    const numFolds = Math.min(4, Math.floor(evalLen / 252)); // at least 1 year per fold
+    let wfReturns = [];
+    if (numFolds >= 2) {
+      const foldSize = Math.floor(evalLen / numFolds);
+      for (let f = 1; f < numFolds; f++) {
+        // Train on folds 0..f-1, test on fold f
+        const foldTrainEnd = startIdx + f * foldSize;
+        const foldTestEnd = Math.min(startIdx + (f + 1) * foldSize, totalDays);
+        const ftd = dates.slice(0, foldTrainEnd);
+        const ftc = closes.slice(0, foldTrainEnd);
+        const ftv = volumes.slice(0, foldTrainEnd);
+        const fTrainYr = Math.max(1, Math.round((foldTrainEnd - startIdx) / 252));
+        // Evaluate best params on this training slice
+        const trainR = ep(ftd, ftc, ftv, fTrainYr, best.vf, best.pf, best.mx, best.bt, best.st);
+        // Evaluate on test fold (use full data up to test end, with testYears = fold size)
+        const fTestD = dates.slice(0, foldTestEnd);
+        const fTestC = closes.slice(0, foldTestEnd);
+        const fTestV = volumes.slice(0, foldTestEnd);
+        const fTestYr = Math.max(1, Math.round(foldSize / 252));
+        const testR = ep(fTestD, fTestC, fTestV, fTestYr, best.vf, best.pf, best.mx, best.bt, best.st);
+        if (testR) wfReturns.push(testR.ret);
+      }
+    }
+    const wfAvgReturn = wfReturns.length > 0 ? wfReturns.reduce((a, b) => a + b, 0) / wfReturns.length : null;
+
     return {
       best, totalCombos: allResults.length,
       trainMetrics: { avg_yr_return: best.ret, recovery_period: best.rec },
       testMetrics: testResult ? { avg_yr_return: testResult.ret, recovery_period: testResult.rec } : null,
+      walkForward: wfAvgReturn !== null ? { avg_return: wfAvgReturn, folds: wfReturns.length, returns: wfReturns } : null,
+    };
     };
   };
 
@@ -2085,7 +2115,7 @@ function App() {
     const result = await runOptimizer(s, years, maxRecovery || 5, msg => setOptimizeResult(msg), asymmetric);
     if (!result) { setError("No valid params found for " + s); setOptimizing(false); return; }
 
-    const {best, trainMetrics, testMetrics, totalCombos} = result;
+    const {best, trainMetrics, testMetrics, totalCombos, walkForward} = result;
     setVolFlag(best.vf);
     setPriceFlag(best.pf);
     setMix(best.mx);
@@ -2094,8 +2124,9 @@ function App() {
 
     const trainStr = (trainMetrics.avg_yr_return * 100).toFixed(1) + "% / " + trainMetrics.recovery_period.toFixed(1) + "yr";
     const testStr = testMetrics ? (testMetrics.avg_yr_return * 100).toFixed(1) + "% / " + testMetrics.recovery_period.toFixed(1) + "yr" : "N/A";
+    const wfStr = walkForward ? " | WF: " + (walkForward.avg_return * 100).toFixed(1) + "% (" + walkForward.folds + " folds)" : "";
     const asymStr = best.bt !== best.st ? " [asym]" : "";
-    setOptimizeResult("Train: " + trainStr + " | Test: " + testStr + " (" + totalCombos.toLocaleString() + " combos" + asymStr + ")");
+    setOptimizeResult("Train: " + trainStr + " | Test: " + testStr + wfStr + " (" + totalCombos.toLocaleString() + " combos" + asymStr + ")");
 
     const now = new Date().toISOString();
     const prevParams = tickerParams && tickerParams[s] ? {...tickerParams[s]} : null;
@@ -2104,6 +2135,7 @@ function App() {
       buy_threshold: best.bt, sell_threshold: best.st,
       last_optimized: now, prev_params: prevParams,
       train_metrics: trainMetrics, test_metrics: testMetrics,
+      walk_forward: walkForward,
     };
     setTickerParams(prev => ({...prev, [s]: {...(prev && prev[s] || {}), ...optimizedEntry}}));
     setOptimizing(false);
@@ -2117,7 +2149,7 @@ function App() {
       setBulkProgress(prev => prev ? {...prev, ticker: ticker + " " + msg} : null);
     }, asymmetric);
     if (!result) return null;
-    const {best, trainMetrics, testMetrics} = result;
+    const {best, trainMetrics, testMetrics, walkForward} = result;
     const now = new Date().toISOString();
     const prevParams = tickerParams && tickerParams[ticker] ? {...tickerParams[ticker]} : null;
     const entry = {
@@ -2125,6 +2157,7 @@ function App() {
       buy_threshold: best.bt, sell_threshold: best.st,
       last_optimized: now, prev_params: prevParams,
       train_metrics: trainMetrics, test_metrics: testMetrics,
+      walk_forward: walkForward,
     };
     setTickerParams(prev => ({...prev, [ticker]: {...(prev && prev[ticker] || {}), ...entry}}));
     return entry;
@@ -2204,13 +2237,178 @@ function App() {
     setSaving(false);
   };
 
+  // Portfolio-level optimization: evaluates param combinations across all tickers
+  // to maximize portfolio Sharpe-like ratio (return / max drawdown)
+  const portfolioOptimize = async () => {
+    const tickers = allParamTickers.filter(t => tickerParams && tickerParams[t]);
+    if (tickers.length === 0) { setSaveMsg("Run Optimize All first to generate candidate params"); return; }
+    setBulkProgress({current: 0, total: tickers.length + 1, ticker: "Fetching price data..."});
+
+    // Step 1: Fetch price data for all tickers
+    const priceCache = {};
+    for (let i = 0; i < tickers.length; i++) {
+      const t = tickers[i];
+      setBulkProgress(prev => ({...prev, current: i, ticker: "Fetching " + t + "..."}));
+      const yd = await fetchYahooData(t, years + 1);
+      if (yd && !yd.error) priceCache[t] = {dates: yd.dates, closes: yd.closes, volumes: yd.volumes};
+      else if (localData && localData[t]) priceCache[t] = {dates: localData[t].d, closes: localData[t].c, volumes: localData[t].v};
+      await new Promise(ok => setTimeout(ok, 0));
+    }
+
+    // Step 2: For each ticker, get top 3 param candidates via coarse search
+    setBulkProgress(prev => ({...prev, ticker: "Running coarse search per ticker..."}));
+    await new Promise(ok => setTimeout(ok, 0));
+    const candidatesPerTicker = {};
+    const vFlags = [0,1,2,3], pFlags = [0,1,2,3];
+    const mixes = []; for (let m = 0; m <= 1.001; m += 0.2) mixes.push(Math.round(m*100)/100);
+    const thresholds = []; for (let t = -0.1; t <= 0.1001; t += 0.01) thresholds.push(Math.round(t*10000)/10000);
+    const recLimit = maxRecovery || 5;
+
+    for (const t of tickers) {
+      if (!priceCache[t]) continue;
+      const {dates: d, closes: c, volumes: v} = priceCache[t];
+      const results = [];
+      for (const vf of vFlags) {
+        for (const pf of pFlags) {
+          for (const mx of mixes) {
+            for (const th of thresholds) {
+              const r = computeCHCModel(d, c, v, {evalYears: years, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th});
+              if (r && !r.error && r.trading) {
+                const ret = r.trading.avg_yr_return || 0;
+                const rec = r.trading.recovery_period || 0;
+                if (rec > 0 && rec <= recLimit) results.push({vf, pf, mx, bt: th, st: th, ret, rec});
+              }
+            }
+          }
+        }
+      }
+      results.sort((a, b) => b.ret - a.ret);
+      // Keep current params as candidate[0], then top unique alternatives
+      const current = tickerParams[t];
+      const currentEntry = {vf: current.vol_flag, pf: current.price_flag, mx: current.vol_price_mix, bt: current.buy_threshold, st: current.sell_threshold, ret: current.train_metrics ? current.train_metrics.avg_yr_return : 0, rec: current.train_metrics ? current.train_metrics.recovery_period : 5};
+      candidatesPerTicker[t] = [currentEntry, ...results.slice(0, 2)];
+      setBulkProgress(prev => ({...prev, ticker: "Coarse search: " + t + " (" + results.length + " valid)"}));
+      await new Promise(ok => setTimeout(ok, 0));
+    }
+
+    // Step 3: Evaluate portfolio-level metrics
+    // For each ticker, compute daily balance series for each candidate
+    setBulkProgress(prev => ({...prev, ticker: "Evaluating portfolio combinations..."}));
+    await new Promise(ok => setTimeout(ok, 0));
+
+    // Find common date set
+    const dateSets = Object.keys(priceCache).map(t => new Set(priceCache[t].dates));
+    if (dateSets.length === 0) { setBulkProgress(prev => ({...prev, ticker: "No data"})); return; }
+    let commonDates = dateSets[0];
+    for (let i = 1; i < dateSets.length; i++) commonDates = new Set([...commonDates].filter(d => dateSets[i].has(d)));
+    const sortedDates = [...commonDates].sort();
+    const evalStart = Math.max(0, sortedDates.length - years * 252);
+    const evalDates = sortedDates.slice(evalStart);
+    if (evalDates.length < 100) { setBulkProgress(prev => ({...prev, ticker: "Not enough common dates"})); return; }
+
+    // Pre-compute balance series per ticker per candidate
+    const balanceSeries = {};
+    for (const t of tickers) {
+      if (!candidatesPerTicker[t] || !priceCache[t]) continue;
+      balanceSeries[t] = [];
+      for (const cand of candidatesPerTicker[t]) {
+        const r = computeCHCModel(priceCache[t].dates, priceCache[t].closes, priceCache[t].volumes, {
+          evalYears: years, volPriceMix: cand.mx, volFlag: cand.vf, priceFlag: cand.pf, buyThreshold: cand.bt, sellThreshold: cand.st,
+        });
+        if (r && r.chart && r.chart.dates) {
+          const lookup = {};
+          for (let i = 0; i < r.chart.dates.length; i++) lookup[r.chart.dates[i]] = r.chart.trading_balance[i];
+          balanceSeries[t].push(lookup);
+        } else {
+          balanceSeries[t].push(null);
+        }
+      }
+    }
+
+    // Greedy selection: for each ticker, pick the candidate that maximizes portfolio Sharpe
+    const weight = 1 / tickers.filter(t => balanceSeries[t]).length;
+    const selectedIdx = {};
+    for (const t of tickers) selectedIdx[t] = 0; // start with current params
+
+    // Evaluate portfolio metrics for a given selection
+    const evalPortfolio = (sel) => {
+      const vals = [];
+      for (const date of evalDates) {
+        let portVal = 0, cnt = 0;
+        for (const t of tickers) {
+          if (!balanceSeries[t] || !balanceSeries[t][sel[t]]) continue;
+          const v = balanceSeries[t][sel[t]][date];
+          if (v) { portVal += v * weight; cnt++; }
+        }
+        if (cnt > 0) vals.push(portVal); else if (vals.length > 0) vals.push(vals[vals.length - 1]);
+      }
+      if (vals.length < 2) return {ret: 0, dd: -1, sharpe: -999};
+      const yrs = vals.length / 252;
+      const ret = Math.pow(vals[vals.length-1] / vals[0], 1/yrs) - 1;
+      let peak = vals[0], maxDD = 0;
+      for (const v of vals) { peak = Math.max(peak, v); maxDD = Math.min(maxDD, v/peak - 1); }
+      const sharpe = maxDD < 0 ? ret / Math.abs(maxDD) : ret * 10; // return / risk
+      return {ret, dd: maxDD, sharpe};
+    };
+
+    let bestSharpe = evalPortfolio(selectedIdx).sharpe;
+
+    // Iterate: try switching each ticker to each candidate, keep if improves
+    let improved = true;
+    let passes = 0;
+    while (improved && passes < 3) {
+      improved = false;
+      passes++;
+      for (const t of tickers) {
+        if (!candidatesPerTicker[t]) continue;
+        const origIdx = selectedIdx[t];
+        for (let ci = 0; ci < candidatesPerTicker[t].length; ci++) {
+          if (ci === origIdx) continue;
+          selectedIdx[t] = ci;
+          const s = evalPortfolio(selectedIdx).sharpe;
+          if (s > bestSharpe) { bestSharpe = s; improved = true; break; }
+          else selectedIdx[t] = origIdx;
+        }
+      }
+      setBulkProgress(prev => ({...prev, ticker: "Portfolio pass " + passes + " (Sharpe: " + bestSharpe.toFixed(2) + ")"}));
+      await new Promise(ok => setTimeout(ok, 0));
+    }
+
+    // Apply selected params
+    const finalMetrics = evalPortfolio(selectedIdx);
+    let changed = 0;
+    for (const t of tickers) {
+      if (!candidatesPerTicker[t]) continue;
+      const cand = candidatesPerTicker[t][selectedIdx[t]];
+      if (selectedIdx[t] !== 0) { // changed from current
+        const now = new Date().toISOString();
+        const prev = tickerParams[t] ? {...tickerParams[t]} : null;
+        const entry = {
+          vol_flag: cand.vf, price_flag: cand.pf, vol_price_mix: cand.mx,
+          buy_threshold: cand.bt, sell_threshold: cand.st,
+          last_optimized: now, prev_params: prev,
+          train_metrics: {avg_yr_return: cand.ret, recovery_period: cand.rec},
+        };
+        setTickerParams(p => ({...p, [t]: {...(p && p[t] || {}), ...entry}}));
+        changed++;
+      }
+    }
+
+    setBulkProgress({
+      current: tickers.length + 1, total: tickers.length + 1,
+      ticker: "Portfolio optimized! Sharpe: " + bestSharpe.toFixed(2) +
+        " | Return: " + (finalMetrics.ret * 100).toFixed(1) + "% | MaxDD: " + (finalMetrics.dd * 100).toFixed(1) +
+        "% | " + changed + " tickers changed"
+    });
+  };
+
   if (loading) return <div className="app"><div className="loading"><div className="spinner"></div> Loading dashboard...</div></div>;
 
   return (
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.6.0</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.7.0</span></div>
       </div>
 
       {schwabAuth && (schwabAuth.needs_reauth || schwabAuth.refresh_days_remaining <= 3) && (
@@ -2383,6 +2581,11 @@ function App() {
               <button onClick={commitAll} disabled={saving} style={{background:"var(--green)",color:"#000",border:"none",fontWeight:600,fontSize:12}}>
                 {saving ? "Saving..." : "Commit All"}
               </button>
+              <button onClick={portfolioOptimize} disabled={bulkProgress && bulkProgress.current !== bulkProgress.total}
+                style={{background:"#8b5cf6",color:"#fff",border:"none",fontWeight:600,fontSize:12}}
+                title="Optimize params across all tickers to maximize portfolio-level Sharpe ratio">
+                Portfolio Opt
+              </button>
               <button onClick={()=>{
                 const data = {};
                 for (const t of allParamTickers) {
@@ -2431,6 +2634,7 @@ function App() {
                     {key:"vol_price_mix",label:"Mix"}, {key:"buy_threshold",label:"Buy Th"}, {key:"sell_threshold",label:"Sell Th"},
                     {key:"train_ret",label:"Train Ret"}, {key:"train_rec",label:"Train Rec"},
                     {key:"test_ret",label:"Test Ret"}, {key:"test_rec",label:"Test Rec"},
+                    {key:"wf_ret",label:"WF Avg"},
                     {key:"last_optimized",label:"Last Optimized"},
                   ].map(col => (
                     <th key={col.key} onClick={()=>setParamsSortCfg(prev => ({key:col.key, dir: prev.key===col.key ? -prev.dir : 1}))}
@@ -2458,6 +2662,7 @@ function App() {
                     else if (k === "train_rec") { av = a.p && a.p.train_metrics ? a.p.train_metrics.recovery_period : 999; bv = b.p && b.p.train_metrics ? b.p.train_metrics.recovery_period : 999; }
                     else if (k === "test_ret") { av = a.p && a.p.test_metrics ? a.p.test_metrics.avg_yr_return : -999; bv = b.p && b.p.test_metrics ? b.p.test_metrics.avg_yr_return : -999; }
                     else if (k === "test_rec") { av = a.p && a.p.test_metrics ? a.p.test_metrics.recovery_period : 999; bv = b.p && b.p.test_metrics ? b.p.test_metrics.recovery_period : 999; }
+                    else if (k === "wf_ret") { av = a.p && a.p.walk_forward ? a.p.walk_forward.avg_return : -999; bv = b.p && b.p.walk_forward ? b.p.walk_forward.avg_return : -999; }
                     else if (k === "last_optimized") { av = a.p && a.p.last_optimized || ""; bv = b.p && b.p.last_optimized || ""; }
                     else { av = a.p ? a.p[k] : 0; bv = b.p ? b.p[k] : 0; }
                     if (av === bv) return 0;
@@ -2484,6 +2689,10 @@ function App() {
                         {p && p.test_metrics ? (p.test_metrics.avg_yr_return * 100).toFixed(1) + "%" : "\u2014"}
                       </td>
                       <td>{p && p.test_metrics ? p.test_metrics.recovery_period.toFixed(1) + "y" : "\u2014"}</td>
+                      <td style={{color: p && p.walk_forward ? (p.walk_forward.avg_return >= (p.train_metrics ? p.train_metrics.avg_yr_return * 0.5 : 0) ? "var(--green)" : "var(--red)") : "var(--text2)"}}
+                        title={p && p.walk_forward ? p.walk_forward.folds + "-fold walk-forward" : ""}>
+                        {p && p.walk_forward ? (p.walk_forward.avg_return * 100).toFixed(1) + "%" : "\u2014"}
+                      </td>
                       <td style={{fontSize:10,color:"var(--text2)"}}>
                         {p && p.last_optimized ? new Date(p.last_optimized).toLocaleDateString() : "\u2014"}
                       </td>
@@ -2528,6 +2737,12 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v4.7.0",date:"2026-04-02",items:[
+              "Walk-forward validation \u2014 rolling N-fold cross-validation after optimization (up to 4 folds), reports average out-of-sample return across all folds",
+              "Portfolio-level optimization \u2014 evaluates top-3 param candidates per ticker and uses greedy coordinate descent to maximize portfolio Sharpe ratio (return / max drawdown)",
+              "WF Avg column in Params table showing walk-forward average return per ticker with color coding",
+              "Portfolio Opt button on Params tab with live Sharpe ratio progress",
+            ]},
             {ver:"v4.6.0",date:"2026-04-02",items:[
               "Asymmetric thresholds \u2014 optimizer can now search separate buy/sell thresholds (checkbox toggle)",
               "Optimize All progress bar with visual indicator and ticker status",
