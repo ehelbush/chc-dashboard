@@ -2113,7 +2113,6 @@ function App() {
       testMetrics: testResult ? { avg_yr_return: testResult.ret, recovery_period: testResult.rec } : null,
       walkForward: wfAvgReturn !== null ? { avg_return: wfAvgReturn, folds: wfReturns.length, returns: wfReturns } : null,
     };
-    };
   };
 
   const optimizeTicker = async () => {
