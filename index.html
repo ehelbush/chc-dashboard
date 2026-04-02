@@ -8,13 +8,21 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
   <style>
-    :root {
+    :root, [data-theme="dark"] {
       --bg: #0f1117; --bg2: #1a1d29; --bg3: #242836; --border: #2e3348;
       --text: #e4e6ed; --text2: #9498a8;
       --green: #22c55e; --green-bg: rgba(34,197,94,0.12);
       --red: #ef4444; --red-bg: rgba(239,68,68,0.12);
       --blue: #3b82f6; --blue-bg: rgba(59,130,246,0.12);
       --gold: #eab308;
+    }
+    [data-theme="light"] {
+      --bg: #f5f6f8; --bg2: #ffffff; --bg3: #e8eaef; --border: #d0d3dc;
+      --text: #1a1d29; --text2: #5a5e6e;
+      --green: #16a34a; --green-bg: rgba(22,163,74,0.1);
+      --red: #dc2626; --red-bg: rgba(220,38,38,0.1);
+      --blue: #2563eb; --blue-bg: rgba(37,99,235,0.1);
+      --gold: #ca8a04;
     }
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
@@ -41,7 +49,7 @@
     th { cursor:pointer; user-select:none; }
     th:hover { color:var(--blue); }
     td { padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
-    tr:hover td { background:rgba(255,255,255,0.03); }
+    tr:hover td { background:rgba(128,128,128,0.06); }
     .tc { font-weight:700; color:var(--blue); }
     .buy { color:var(--green); font-weight:600; }
     .sell { color:var(--red); font-weight:600; }
@@ -514,6 +522,21 @@ function StrengthBar({value}) {
       <span style={{fontSize:12,color:co,fontWeight:600,minWidth:40,textAlign:"right"}}>{value>=0?"+":""}{value.toFixed(2)}</span>
     </div>
   );
+}
+
+function exportCSV(rows, columns, filename) {
+  const header = columns.map(c => c.label).join(",");
+  const body = rows.map(r => columns.map(c => {
+    let v = r[c.field];
+    if (v == null) return "";
+    if (typeof v === "string") return '"' + v.replace(/"/g, '""') + '"';
+    return v;
+  }).join(",")).join("\n");
+  const blob = new Blob([header + "\n" + body], {type:"text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
 }
 
 const COL_TIPS = {
@@ -1023,6 +1046,12 @@ function MarketScreener({onSelect}) {
             <option value="high_momentum">High Momentum (Buy, 20%+ last yr)</option>
             <option value="mega_cap">Mega Cap ($100B+)</option>
           </select>
+          <button onClick={()=>exportCSV(filtered,[
+            {label:"Ticker",field:"ticker"},{label:"Signal",field:"buy_sell_call"},{label:"Strength",field:"call_strength"},
+            {label:"Sector",field:"sector"},{label:"Market Cap",field:"market_cap"},{label:"Last Yr Return",field:"last_yr_return"},
+            {label:"Avg Yr Return",field:"av_yrly_return"},{label:"Est Next Yr",field:"est_next_yr_return"},
+            {label:"Current Loss",field:"current_loss"},{label:"Stat3 Loss",field:"stat3_loss"},{label:"Recovery",field:"recovery_period"}
+          ],"chc_screener.csv")} style={{fontSize:11,padding:"5px 10px",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)"}}>Export CSV</button>
           <span className="screener-stats">Showing {filtered.length.toLocaleString()} tickers</span>
         </div>
 
@@ -1795,7 +1824,15 @@ function SchwabAccount({onAnalyzeTicker}) {
 
       {/* Holdings table */}
       <div className="card">
-        <div className="card-title">Holdings<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8,fontSize:12}}>(click to run CHC model)</span></div>
+        <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span>Holdings<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8,fontSize:12,textTransform:"none",letterSpacing:0}}>(click to run CHC model)</span></span>
+          <button onClick={()=>exportCSV(sortedHoldings,[
+            {label:"Symbol",field:"symbol"},{label:"Sector",field:"sector"},{label:"Qty",field:"quantity"},
+            {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},{label:"Mkt Value",field:"market_value"},
+            {label:"Weight %",field:"port_weight"},{label:"Total Gain",field:"total_gain"},
+            {label:"Gain %",field:"total_gain_pct"},{label:"Day %",field:"day_gain_pct"}
+          ],"chc_holdings.csv")} style={{fontSize:11,padding:"4px 10px",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",fontWeight:500,textTransform:"none",letterSpacing:0}}>Export CSV</button>
+        </div>
         <div className="table-wrap">
           <table>
             <thead><tr>
@@ -1938,6 +1975,9 @@ function App() {
   const [paramsSortCfg, setParamsSortCfg] = useState({key:"ticker",dir:1});
   const [asymmetric, setAsymmetric] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem("chc-theme") || "dark");
+  const [defSearch, setDefSearch] = useState("");
+  useEffect(() => { document.documentElement.setAttribute("data-theme", theme); localStorage.setItem("chc-theme", theme); }, [theme]);
   const [schwabAuth, setSchwabAuth] = useState(null);
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
@@ -2558,7 +2598,13 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.0.0</span></div>
+        <div className="header-right">
+          <button onClick={()=>setTheme(t=>t==="dark"?"light":"dark")} title={theme==="dark"?"Switch to light mode":"Switch to dark mode"}
+            style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"5px 10px",borderRadius:8,fontSize:14,cursor:"pointer",lineHeight:1}}>
+            {theme==="dark"?"\u2600":"\u263D"}
+          </button>
+          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.1.0</span>
+        </div>
       </div>
 
       {schwabAuth && (schwabAuth.needs_reauth || schwabAuth.refresh_days_remaining <= 3) && (
@@ -2694,9 +2740,18 @@ function App() {
             </details>
           )}
 
-          {view==="detail"&&(analyzing
-            ? <div className="loading"><div className="spinner"></div> Fetching data and running model...</div>
-            : <TickerDetail data={tickerDetail} onBack={()=>setView("dashboard")}/>
+          {view==="detail"&&(
+            <div>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12,fontSize:13,color:"var(--text2)"}}>
+                <span style={{cursor:"pointer",color:"var(--blue)"}} onClick={()=>setView("dashboard")}>Analysis</span>
+                <span>{"\u203A"}</span>
+                <span style={{color:"var(--text)",fontWeight:600}}>{symbol || "Detail"}</span>
+              </div>
+              {analyzing
+                ? <div className="loading"><div className="spinner"></div> Fetching data and running model...</div>
+                : <TickerDetail data={tickerDetail} onBack={()=>setView("dashboard")}/>
+              }
+            </div>
           )}
 
           {view==="dashboard"&&!analyzing&&(
@@ -2711,7 +2766,10 @@ function App() {
       {view==="dashboard"&&page==="portfolio"&&(
         <div>
           <div className="card">
-            <div className="card-title">Select Assets {"\u2014"} Sorted by {sortCfg.key.replace(/_/g," ")}<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8}}>(click a row to analyze)</span></div>
+            <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+              <span>Select Assets {"\u2014"} Sorted by {sortCfg.key.replace(/_/g," ")}<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8,textTransform:"none",letterSpacing:0}}>(click a row to analyze)</span></span>
+              {screenerData && screenerData.date && <span style={{fontSize:11,fontWeight:400,color:"var(--text2)",textTransform:"none",letterSpacing:0}}>Data: {screenerData.date}</span>}
+            </div>
             <SummaryTable tickers={SEED_DATA.map(t => {
               const sr = screenerData && screenerData.results && screenerData.results.find(r => r.ticker === t.ticker);
               return sr ? {...t, ...sr, ticker: t.ticker} : t;
@@ -2905,13 +2963,24 @@ function App() {
 
       {view==="dashboard"&&page==="definitions"&&(
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
-          <div className="card-title" style={{marginBottom:16}}>Definitions</div>
-          {DEFINITIONS.map((d, i) => (
-            <div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i !== DEFINITIONS.length - 1 ? "1px solid var(--border)" : "none"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div className="card-title" style={{margin:0}}>Definitions</div>
+            <input type="text" placeholder="Search definitions..." value={defSearch} onChange={e=>setDefSearch(e.target.value)}
+              style={{width:220,fontSize:12,padding:"6px 10px"}}/>
+          </div>
+          {DEFINITIONS.filter(d => {
+            if (!defSearch) return true;
+            const q = defSearch.toLowerCase();
+            return d[0].toLowerCase().includes(q) || d[1].toLowerCase().includes(q);
+          }).map((d, i, arr) => (
+            <div key={i} style={{marginBottom:12,paddingBottom:12,borderBottom:i !== arr.length - 1 ? "1px solid var(--border)" : "none"}}>
               <div style={{fontWeight:600,fontSize:13,color:"var(--text)",marginBottom:4}}>{d[0]}</div>
               <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>{d[1]}</div>
             </div>
           ))}
+          {defSearch && DEFINITIONS.filter(d => {const q=defSearch.toLowerCase(); return d[0].toLowerCase().includes(q)||d[1].toLowerCase().includes(q);}).length === 0 && (
+            <div style={{color:"var(--text2)",fontSize:13,padding:20,textAlign:"center"}}>No definitions match "{defSearch}"</div>
+          )}
         </div>
       )}
 
@@ -2919,6 +2988,13 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.1.0",date:"2026-04-02",items:[
+              "Dark/Light mode toggle \u2014 click the sun/moon icon in the header, preference saved to localStorage",
+              "Search in Definitions \u2014 filter definitions by keyword, searches both terms and descriptions",
+              "Breadcrumb navigation in Analysis \u2014 shows 'Analysis > TICKER' path when viewing detail, click to go back",
+              "Data staleness indicator \u2014 Select Assets tab now shows screener data date",
+              "CSV export \u2014 Export buttons on Holdings table and Asset Screener to download filtered data as CSV",
+            ]},
             {ver:"v5.0.0",date:"2026-04-02",items:[
               "Mobile responsive design \u2014 hamburger nav menu on small screens, responsive grids, touch-friendly inputs",
               "Inline tooltips on all table column headers across every tab \u2014 hover any header to see what the metric means",
