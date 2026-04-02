@@ -146,9 +146,14 @@ const DEFINITIONS = [
   ["Max Loss", "The worst peak-to-trough drawdown observed during the evaluation period. Can be misleading if it reflects a single extreme event rather than typical behavior (see Stat3 Loss)."],
   ["Recovery Period", "Estimated years to recover from the maximum loss, given the average yearly return. Formula: -2 x ln(1 + maxLoss) / ln(1 + avgYearlyReturn). Lower is better. 'Never' means the average return is negative, so the asset cannot mathematically recover."],
   ["Market Cap", "Total market capitalization (share price x shares outstanding). Useful for filtering out micro-cap / penny stocks susceptible to pump-and-dump. Sourced from Yahoo Finance."],
-  ["Optimizer (Two-Stage Search)", "The parameter optimizer uses a two-pass grid search. Stage 1 does a coarse sweep across wide ranges (thresholds -0.1 to +0.1, mix 0-1 in 0.1 steps, all vol/price flag combos). Stage 2 takes the top 10 results and refines with a tight grid around each (threshold \u00B10.01 in 0.0005 steps, mix \u00B10.1 in 0.02 steps). Total ~11,000 evaluations covering a 10\u00D7 wider search space than single-pass."],
+  ["Optimizer (Two-Stage Search)", "The parameter optimizer uses a two-pass grid search. Stage 1 does a coarse sweep across wide ranges (thresholds -0.1 to +0.1, mix 0-1 in 0.1 steps, all vol/price flag combos) \u2014 ~7,200 combinations. Stage 2 takes the top 10 results and refines with a tight grid around each (threshold \u00B10.01 in 0.0005 steps, mix \u00B10.1 in 0.02 steps) \u2014 ~4,000-5,000 more. Total ~11,000 evaluations covering a 10\u00D7 wider search space than single-pass."],
+  ["Asymmetric Thresholds", "When enabled, Stage 2 tests 7 sell-threshold offsets around each buy threshold (-0.01, -0.005, -0.002, 0, +0.002, +0.005, +0.01), allowing different entry and exit signal levels. For example, buy at -0.02 but sell at -0.03. Stage 1 stays symmetric. Marked with [asym] in results and 'A' badge in the Params table."],
   ["Train/Test Split", "The optimizer splits the evaluation period 80/20. Parameters are optimized on the first 80% of data (training set) and then evaluated on the remaining 20% (test set). If the test return is far below the training return, the parameters may be overfit to historical noise. Both metrics are reported in the result line."],
+  ["Walk-Forward Validation (WF)", "After optimization, an N-fold rolling cross-validation (up to 4 folds, min 1 year each). For each fold, trains on all prior folds and tests on the current one. The average out-of-sample return is reported as 'WF: X.X% (N folds)'. More robust than a single train/test split because it tests across multiple time periods. Green in the Params table if \u2265 50% of train return, red if below."],
   ["Max Recovery Constraint", "An optimizer input (default 5 years) that filters candidate parameter sets. Only combinations whose estimated recovery period is at or below this limit are considered. If none pass, the optimizer falls back to all results with positive recovery. Tighter values (e.g. 3 years) favor conservative, low-drawdown configurations; looser values allow higher-return / higher-risk configurations."],
+  ["Overfitting Flag", "A red '!' warning shown in the Params table when a ticker's test return is less than 50% of its training return. Indicates the optimized parameters may be curve-fit to historical noise rather than capturing genuine signal. The row is highlighted red and the Test Ret column turns red. Check the WF Avg column for a second opinion."],
+  ["Portfolio Optimization", "Optimizes params across all tickers simultaneously to maximize the portfolio-level Sharpe ratio (return / |max drawdown|). Generates top-3 param candidates per ticker via coarse grid, pre-computes daily balance series, then uses greedy coordinate descent to find the combination that maximizes the equal-weight portfolio's risk-adjusted return. Considers correlations implicitly \u2014 tickers with uncorrelated returns are favored."],
+  ["Sharpe Ratio (Portfolio)", "Used by the Portfolio Optimizer as the objective function: annualized portfolio return divided by the absolute value of the maximum drawdown. Higher is better. Unlike the traditional Sharpe ratio (which uses volatility), this variant penalizes deep drawdowns directly, aligning with the model's focus on recovery period and loss management."],
 ];
 
 // ── CHC Trading Model (JavaScript port) ─────────────────────────────────────
@@ -2477,11 +2482,6 @@ function App() {
                   The optimizer finds the best combination of <strong>Vol Flag</strong>, <strong>Price Flag</strong>, <strong>Vol/Price Mix</strong>, and <strong>Buy/Sell Threshold</strong> for a given ticker by searching thousands of parameter combinations and selecting the one with the highest annualized return that keeps the recovery period under the configured maximum.
                 </p>
 
-                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Train / Test Split (Overfitting Protection)</div>
-                <p style={{margin:"0 0 10px"}}>
-                  The evaluation period is split 80/20. The optimizer searches for the best parameters using only the <strong>first 80%</strong> of the data (the training set). The winning parameters are then evaluated on the <strong>last 20%</strong> (the test set) to see how they perform on data the optimizer never saw. This guards against overfitting {"\u2014"} if the test return is dramatically lower than the train return, the parameters may be curve-fit to historical noise rather than genuine signal. Both metrics are shown in the result: <code>Train: 15.2% / 2.1yr | Test: 8.7% / 3.4yr</code>.
-                </p>
-
                 <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Two-Stage Search</div>
                 <p style={{margin:"0 0 6px"}}>
                   A single fine-grained grid over the full parameter space would require millions of evaluations. Instead, the optimizer uses a two-stage approach:
@@ -2494,6 +2494,21 @@ function App() {
                   Total work is roughly 11,000{"\u2013"}12,000 evaluations {"\u2014"} comparable to the old single-pass grid but covering a 10{"\u00D7"} wider threshold range with finer precision around the best candidates.
                 </p>
 
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Asymmetric Thresholds</div>
+                <p style={{margin:"0 0 10px"}}>
+                  When the <strong>Asym Thresholds</strong> checkbox is enabled, Stage 2 tests 7 sell-threshold offsets around each buy threshold (-0.01, -0.005, -0.002, 0, +0.002, +0.005, +0.01). This allows the model to find different entry and exit levels {"\u2014"} for example, buying when the signal rises above -0.02 but only selling when it drops below -0.03. Stage 1 remains symmetric to keep the search space manageable. Asymmetric results are marked with <code>[asym]</code> in the result line and an <strong>A</strong> badge in the Params table.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Train / Test Split</div>
+                <p style={{margin:"0 0 10px"}}>
+                  The evaluation period is split 80/20. The optimizer searches for the best parameters using only the <strong>first 80%</strong> of the data (the training set). The winning parameters are then evaluated on the <strong>last 20%</strong> (the test set) to see how they perform on unseen data. This guards against overfitting {"\u2014"} if the test return is dramatically lower than the train return, the parameters may be curve-fit to historical noise. Both metrics are shown: <code>Train: 15.2% / 2.1yr | Test: 8.7% / 3.4yr</code>.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Walk-Forward Validation</div>
+                <p style={{margin:"0 0 10px"}}>
+                  After the optimizer picks the best parameters, it runs an additional <strong>N-fold walk-forward cross-validation</strong> (up to 4 folds, at least 1 year each). For each fold, the model trains on all prior folds and tests on the current fold. The average out-of-sample return across all folds is reported as <code>WF: X.X% (N folds)</code>. This is more robust than the single 80/20 split because it tests across multiple time periods, reducing the chance that a single favorable test window masks overfitting. The WF Avg column in the Params table shows this metric {"\u2014"} green if {"\u2265"} 50% of the training return, red if below.
+                </p>
+
                 <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Recovery Constraint</div>
                 <p style={{margin:"0 0 10px"}}>
                   The <strong>Max Recovery (yrs)</strong> input controls the maximum acceptable recovery period. The optimizer first filters candidates to those with a recovery period at or below this limit, then picks the highest return. If no candidates pass the filter, it falls back to all results with any positive recovery. Default is 5 years.
@@ -2504,9 +2519,27 @@ function App() {
                   Among all candidates that pass the recovery filter, the optimizer selects the parameter set with the <strong>highest annualized return</strong> on the training data. This biases toward growth while the recovery constraint prevents selecting parameters that produce high returns at the cost of catastrophic drawdowns.
                 </p>
 
-                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Parameter History</div>
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Overfitting Detection</div>
+                <p style={{margin:"0 0 10px"}}>
+                  The Params table flags tickers where the <strong>test return is less than 50% of the training return</strong> with a red <strong>!</strong> icon and red row highlight. This threshold indicates the params may be curve-fit to training data and unlikely to perform as well going forward. The WF Avg column provides a second opinion {"\u2014"} if both the test and walk-forward returns are poor relative to training, the overfitting signal is strong.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Portfolio-Level Optimization</div>
+                <p style={{margin:"0 0 10px"}}>
+                  The <strong>Portfolio Opt</strong> button on the Params tab takes a different approach: instead of optimizing each ticker independently, it optimizes for the <strong>portfolio-level Sharpe ratio</strong> (annualized return / |max drawdown|). It works in three steps:
+                </p>
+                <ol style={{margin:"0 0 10px",paddingLeft:20}}>
+                  <li style={{marginBottom:4}}><strong>Candidate generation:</strong> Runs a coarse grid search per ticker to find the top 3 param candidates (including current params).</li>
+                  <li style={{marginBottom:4}}><strong>Balance series:</strong> Pre-computes daily balance series for each candidate across the common date range for all tickers.</li>
+                  <li style={{marginBottom:4}}><strong>Coordinate descent:</strong> Starting from current params, tries switching each ticker to each candidate and keeps changes that improve the equal-weight portfolio{"'"}s Sharpe ratio. Runs up to 3 passes until no further improvement is found.</li>
+                </ol>
+                <p style={{margin:"0 0 10px"}}>
+                  This implicitly considers correlations between tickers {"\u2014"} a ticker whose returns are uncorrelated with the rest of the portfolio is more valuable than one that moves in lockstep, even if its individual return is slightly lower. Results are staged (not auto-committed).
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",margin:"14px 0 6px"}}>Commit / Revert Workflow</div>
                 <p style={{margin:0}}>
-                  When the optimizer finishes, it stores a <code>last_optimized</code> timestamp and a snapshot of the previous parameters (<code>prev_params</code>) in memory. This enables future commit/revert functionality {"\u2014"} optimized parameters are "staged" in the ribbon but not persisted to <code>ticker_params.json</code> until explicitly committed.
+                  After optimization, parameters are <strong>staged</strong> in the ribbon or Params table but not persisted. Click <strong>Commit</strong> to save to <code>ticker_params.json</code> via the GitHub API, or <strong>Revert</strong> to restore the last committed values. <strong>Commit All</strong> saves all staged params in one API call. Use <strong>Export</strong> to download a JSON backup before bulk operations, and <strong>Import</strong> to restore from a file. The <code>last_optimized</code> timestamp and <code>prev_params</code> snapshot are stored with each optimization for audit history.
                 </p>
               </div>
             </details>
