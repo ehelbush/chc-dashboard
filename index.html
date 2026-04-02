@@ -38,6 +38,8 @@
     th { text-align:left; padding:10px 12px; font-weight:600; color:var(--text2); border-bottom:2px solid var(--border); white-space:nowrap; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; cursor:pointer; user-select:none; }
     th:hover { color:var(--text); }
     th .sa { margin-left:4px; font-size:10px; }
+    th { cursor:pointer; user-select:none; }
+    th:hover { color:var(--blue); }
     td { padding:10px 12px; border-bottom:1px solid var(--border); white-space:nowrap; }
     tr:hover td { background:rgba(255,255,255,0.03); }
     .tc { font-weight:700; color:var(--blue); }
@@ -1079,29 +1081,31 @@ function SchwabAccount({onAnalyzeTicker}) {
   const allHoldings = [];
   schwabData.accounts.forEach(a => a.holdings && a.holdings.forEach(h => allHoldings.push(h)));
 
+  // Add portfolio weight to each holding
+  const totalPortValue = allHoldings.reduce((s, h) => s + (h.market_value || 0), 0);
+  const holdingsWithWeight = allHoldings.map(h => ({...h, port_weight: totalPortValue > 0 ? h.market_value / totalPortValue : 0}));
+
   // Sort holdings
-  const sortedHoldings = [...allHoldings].sort((a,b) => {
+  const sortedHoldings = [...holdingsWithWeight].sort((a,b) => {
     const av = a[holdSort.key] != null ? a[holdSort.key] : 0;
     const bv = b[holdSort.key] != null ? b[holdSort.key] : 0;
     if (typeof av === "string") return holdSort.dir * av.localeCompare(bv);
     return holdSort.dir * (av - bv);
   });
 
-  // Sector data (merge from all accounts)
+  // Sector data — build from individual holdings' sector field (not Schwab asset-class grouping)
   const sectorMap = {};
   let totalSectorValue = 0;
-  schwabData.accounts.forEach(a => {
-    if (a.sectors && a.sectors.sectors) {
-      Object.entries(a.sectors.sectors).forEach(([name, data]) => {
-        if (!sectorMap[name]) sectorMap[name] = {value:0, positions:[]};
-        sectorMap[name].value += data.value;
-        sectorMap[name].positions.push(...data.positions);
-        totalSectorValue += data.value;
-      });
-    }
+  allHoldings.forEach(h => {
+    const name = h.sector || "Other";
+    if (!sectorMap[name]) sectorMap[name] = {value: 0, count: 0, positions: []};
+    sectorMap[name].value += h.market_value || 0;
+    sectorMap[name].count++;
+    sectorMap[name].positions.push(h.symbol);
+    totalSectorValue += h.market_value || 0;
   });
   const sectors = Object.entries(sectorMap)
-    .map(([name, d]) => ({name, value: d.value, weight: totalSectorValue > 0 ? d.value / totalSectorValue : 0, positions: d.positions}))
+    .map(([name, d]) => ({name, value: d.value, weight: totalSectorValue > 0 ? d.value / totalSectorValue : 0, count: d.count, positions: d.positions}))
     .sort((a,b) => b.value - a.value);
 
   // Benchmark colors
@@ -1605,8 +1609,8 @@ function SchwabAccount({onAnalyzeTicker}) {
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <div className="card-title" style={{margin:0}}>Portfolio vs Benchmarks</div>
             <div style={{display:"flex",gap:4}}>
-              <button className={"filter-btn"+(benchView==="returns"?" active":"")} onClick={()=>setBenchView("returns")} style={{padding:"4px 12px",fontSize:12}}>Returns</button>
-              <button className={"filter-btn"+(benchView==="drawdown"?" active":"")} onClick={()=>setBenchView("drawdown")} style={{padding:"4px 12px",fontSize:12}}>Drawdown</button>
+              <button className={"filter-btn"+(benchView==="returns"?" active":"")} onClick={()=>setBenchView("returns")} style={{padding:"4px 12px",fontSize:12}}>Compare Returns</button>
+              <button className={"filter-btn"+(benchView==="drawdown"?" active":"")} onClick={()=>setBenchView("drawdown")} style={{padding:"4px 12px",fontSize:12}}>Compare Drawdowns</button>
             </div>
           </div>
 
@@ -1665,13 +1669,15 @@ function SchwabAccount({onAnalyzeTicker}) {
           <div className="card-title">Sector Allocation</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {sectors.map((s, i) => (
-              <div key={s.name} style={{display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:140,fontSize:12,color:"var(--text2)",flexShrink:0,textOverflow:"ellipsis",overflow:"hidden",whiteSpace:"nowrap"}}>{s.name}</div>
-                <div style={{flex:1,background:"var(--bg3)",borderRadius:4,height:20,position:"relative",overflow:"hidden"}}>
-                  <div style={{position:"absolute",left:0,top:0,height:"100%",width:(s.weight*100)+"%",background:sColors[i%sColors.length],borderRadius:4,opacity:0.8,transition:"width 0.3s"}}/>
+              <div key={s.name} style={{display:"flex",alignItems:"center",gap:12}} title={s.positions.join(", ")}>
+                <div style={{width:180,fontSize:12,color:"var(--text)",flexShrink:0,textOverflow:"ellipsis",overflow:"hidden",whiteSpace:"nowrap",fontWeight:500}}>{s.name}</div>
+                <div style={{width:20,fontSize:10,color:"var(--text2)",textAlign:"center",flexShrink:0}}>{s.count}</div>
+                <div style={{flex:1,background:"var(--bg3)",borderRadius:4,height:22,position:"relative",overflow:"hidden"}}>
+                  <div style={{position:"absolute",left:0,top:0,height:"100%",width:Math.max(2, s.weight*100)+"%",background:sColors[i%sColors.length],borderRadius:4,opacity:0.8,transition:"width 0.3s"}}/>
+                  <span style={{position:"absolute",left:8,top:3,fontSize:10,fontWeight:600,color:"var(--text)"}}>{s.positions.slice(0,4).join(", ")}{s.positions.length > 4 ? "..." : ""}</span>
                 </div>
                 <div style={{width:50,textAlign:"right",fontSize:12,fontWeight:600,color:sColors[i%sColors.length]}}>{(s.weight*100).toFixed(1)}%</div>
-                <div style={{width:80,textAlign:"right",fontSize:12,color:"var(--text2)"}}>${(s.value/1000).toFixed(1)}k</div>
+                <div style={{width:90,textAlign:"right",fontSize:12,color:"var(--text2)"}}>${s.value >= 1e6 ? (s.value/1e6).toFixed(2)+"M" : (s.value/1000).toFixed(1)+"k"}</div>
               </div>
             ))}
           </div>
@@ -1685,10 +1691,11 @@ function SchwabAccount({onAnalyzeTicker}) {
           <table>
             <thead><tr>
               {[
-                {label:"Symbol",field:"symbol"},{label:"Name",field:"name"},{label:"Sector",field:"sector"},
-                {label:"Mkt Cap",field:"market_cap"},{label:"Qty",field:"quantity"},
+                {label:"Symbol",field:"symbol"},{label:"Sector",field:"sector"},
+                {label:"Qty",field:"quantity"},
                 {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},
-                {label:"Mkt Value",field:"market_value"},{label:"Total Gain",field:"total_gain"},
+                {label:"Mkt Value",field:"market_value"},{label:"% Port",field:"port_weight"},
+                {label:"Total Gain",field:"total_gain"},
                 {label:"Gain %",field:"total_gain_pct"},{label:"Day %",field:"day_gain_pct"}
               ].map(col => (
                 <th key={col.field} onClick={()=>handleHoldSort(col.field)}>
@@ -1700,16 +1707,15 @@ function SchwabAccount({onAnalyzeTicker}) {
               {sortedHoldings.map(h => (
                 <tr key={h.symbol} onClick={()=>onAnalyzeTicker && onAnalyzeTicker(h.symbol)} style={{cursor:"pointer"}}>
                   <td className="tc">{h.symbol}</td>
-                  <td style={{maxWidth:200,overflow:"hidden",textOverflow:"ellipsis"}}>{h.name}</td>
                   <td style={{color:"var(--text2)",fontSize:11}}>{h.sector||"\u2014"}</td>
-                  <td style={{color:"var(--text2)",fontSize:12}}>{fmtCap(h.market_cap)}</td>
                   <td>{h.quantity.toLocaleString("en-US",{maximumFractionDigits:2})}</td>
                   <td>${h.avg_cost.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                   <td>${h.current_price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                   <td style={{fontWeight:600}}>${h.market_value.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+                  <td style={{fontWeight:600,color:"var(--blue)"}}>{(h.port_weight*100).toFixed(1)}%</td>
                   <td className={h.total_gain>=0?"pos":"neg"}>${h.total_gain.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
                   <td className={pc(h.total_gain_pct)}>{pct(h.total_gain_pct)}</td>
-                  <td className={pc(h.day_gain_pct)}>{pct(h.day_gain_pct)}</td>
+                  <td className={pc(h.day_gain_pct)}>{h.day_gain_pct != null ? h.day_gain_pct.toFixed(2) + "%" : "\u2014"}</td>
                 </tr>
               ))}
             </tbody>
@@ -2413,7 +2419,7 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.7.0</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.8.0</span></div>
       </div>
 
       {schwabAuth && (schwabAuth.needs_reauth || schwabAuth.refresh_days_remaining <= 3) && (
@@ -2770,6 +2776,15 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v4.8.0",date:"2026-04-02",items:[
+              "Fixed sector allocation \u2014 now shows real sectors (Technology, Healthcare, etc.) from holdings instead of Schwab asset-class grouping that just said 'EQUITY'",
+              "Fixed day gain % \u2014 was showing 629% instead of 6.29% due to double percentage conversion",
+              "Added '% Port' column to holdings table showing each position's weight in the portfolio",
+              "Sector bars now show position count, ticker names inside bars, and hover tooltip with all tickers",
+              "Removed redundant Name column from holdings (symbol is sufficient)",
+              "Clearer benchmark toggle labels: 'Compare Returns' / 'Compare Drawdowns'",
+              "Table headers now highlight on hover to indicate sortability",
+            ]},
             {ver:"v4.7.0",date:"2026-04-02",items:[
               "Walk-forward validation \u2014 rolling N-fold cross-validation after optimization (up to 4 folds), reports average out-of-sample return across all folds",
               "Portfolio-level optimization \u2014 evaluates top-3 param candidates per ticker and uses greedy coordinate descent to maximize portfolio Sharpe ratio (return / max drawdown)",
