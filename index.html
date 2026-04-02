@@ -1787,6 +1787,8 @@ function App() {
   const [saveMsg, setSaveMsg] = useState("");
   const [bulkProgress, setBulkProgress] = useState(null); // {current, total, ticker, results: {}}
   const [paramsSortCfg, setParamsSortCfg] = useState({key:"ticker",dir:1});
+  const [asymmetric, setAsymmetric] = useState(false);
+  const [schwabAuth, setSchwabAuth] = useState(null);
   const [sortCfg, setSortCfg] = useState({key:"recovery_period",dir:1});
 
   // Load local ticker data + screener data
@@ -1795,11 +1797,13 @@ function App() {
       fetch("data/tickers.json").then(r => r.json()).catch(() => null),
       fetch("data/market_screener.json").then(r => r.json()).catch(() => null),
       fetch("data/ticker_params.json").then(r => r.json()).catch(() => null),
-    ]).then(([td, sd, tp]) => {
+      fetch("data/schwab_cache.json").then(r => r.json()).catch(() => null),
+    ]).then(([td, sd, tp, sc]) => {
       setLocalData(td);
       setScreenerData(sd);
       setTickerParams(tp);
       setCommittedParams(tp ? JSON.parse(JSON.stringify(tp)) : null);
+      if (sc && sc.auth_status) setSchwabAuth(sc.auth_status);
       setLoading(false);
     });
   }, []);
@@ -1973,7 +1977,7 @@ function App() {
   };
 
   // Core optimizer: returns {best, trainMetrics, testMetrics, totalCombos} or null
-  const runOptimizer = async (s, evalYears, recLimit, onProgress) => {
+  const runOptimizer = async (s, evalYears, recLimit, onProgress, useAsymmetric) => {
     let dates, closes, volumes;
     const yfData = await fetchYahooData(s, evalYears + 1);
     if (yfData && !yfData.error) { dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; }
@@ -1990,8 +1994,8 @@ function App() {
     const trainVolumes = volumes.slice(0, splitIdx);
     const trainYears = Math.max(1, Math.round((trainDates.length - startIdx) / 252));
 
-    const ep = (d, c, v, yr, vf, pf, mx, th) => {
-      const r = computeCHCModel(d, c, v, { evalYears: yr, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th });
+    const ep = (d, c, v, yr, vf, pf, mx, bt, st) => {
+      const r = computeCHCModel(d, c, v, { evalYears: yr, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: bt, sellThreshold: st !== undefined ? st : bt });
       return (r && !r.error && r.trading) ? { ret: r.trading.avg_yr_return || 0, rec: r.trading.recovery_period || 0 } : null;
     };
 
@@ -2008,8 +2012,8 @@ function App() {
       for (const pf of pFlags) {
         for (const mx of coarseMixes) {
           for (const th of coarseThresholds) {
-            const m = ep(trainDates, trainCloses, trainVolumes, trainYears, vf, pf, mx, th);
-            if (m) coarseResults.push({vf, pf, mx, th, ...m});
+            const m = ep(trainDates, trainCloses, trainVolumes, trainYears, vf, pf, mx, th, th);
+            if (m) coarseResults.push({vf, pf, mx, bt: th, st: th, ...m});
             count++;
           }
         }
@@ -2033,16 +2037,21 @@ function App() {
       const fineMixes = [];
       for (let m = Math.max(0, seed.mx - 0.1); m <= Math.min(1, seed.mx + 0.1) + 0.001; m += 0.02)
         fineMixes.push(Math.round(m * 100) / 100);
-      const fineThresholds = [];
-      for (let t = seed.th - 0.01; t <= seed.th + 0.01 + 0.00001; t += 0.0005)
-        fineThresholds.push(Math.round(t * 10000) / 10000);
+      const fineBuyTh = [];
+      for (let t = seed.bt - 0.01; t <= seed.bt + 0.01 + 0.00001; t += 0.0005)
+        fineBuyTh.push(Math.round(t * 10000) / 10000);
+      // Asymmetric: test sell offsets from buy; symmetric: sell = buy
+      const sellOffsets = useAsymmetric ? [-0.01, -0.005, -0.002, 0, 0.002, 0.005, 0.01] : [0];
       for (const mx of fineMixes) {
-        for (const th of fineThresholds) {
-          const key = seed.vf + "," + seed.pf + "," + mx + "," + th;
-          if (seen.has(key)) continue;
-          seen.add(key);
-          const m = ep(trainDates, trainCloses, trainVolumes, trainYears, seed.vf, seed.pf, mx, th);
-          if (m) fineResults.push({vf: seed.vf, pf: seed.pf, mx, th, ...m});
+        for (const bt of fineBuyTh) {
+          for (const off of sellOffsets) {
+            const st = Math.round((bt + off) * 10000) / 10000;
+            const key = seed.vf + "," + seed.pf + "," + mx + "," + bt + "," + st;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const m = ep(trainDates, trainCloses, trainVolumes, trainYears, seed.vf, seed.pf, mx, bt, st);
+            if (m) fineResults.push({vf: seed.vf, pf: seed.pf, mx, bt, st, ...m});
+          }
         }
       }
       if (onProgress) onProgress("Stage 2: seed " + (top10.indexOf(seed) + 1) + "/10");
@@ -2057,7 +2066,7 @@ function App() {
     const best = allCandidates[0];
 
     const testYears = Math.max(1, Math.round((dates.length - splitIdx) / 252));
-    const testResult = ep(dates, closes, volumes, testYears, best.vf, best.pf, best.mx, best.th);
+    const testResult = ep(dates, closes, volumes, testYears, best.vf, best.pf, best.mx, best.bt, best.st);
 
     return {
       best, totalCombos: allResults.length,
@@ -2073,31 +2082,32 @@ function App() {
     setOptimizeResult("");
     setError(null);
 
-    const result = await runOptimizer(s, years, maxRecovery || 5, msg => setOptimizeResult(msg));
+    const result = await runOptimizer(s, years, maxRecovery || 5, msg => setOptimizeResult(msg), asymmetric);
     if (!result) { setError("No valid params found for " + s); setOptimizing(false); return; }
 
     const {best, trainMetrics, testMetrics, totalCombos} = result;
     setVolFlag(best.vf);
     setPriceFlag(best.pf);
     setMix(best.mx);
-    setBuyThreshold(best.th);
-    setSellThreshold(best.th);
+    setBuyThreshold(best.bt);
+    setSellThreshold(best.st);
 
     const trainStr = (trainMetrics.avg_yr_return * 100).toFixed(1) + "% / " + trainMetrics.recovery_period.toFixed(1) + "yr";
     const testStr = testMetrics ? (testMetrics.avg_yr_return * 100).toFixed(1) + "% / " + testMetrics.recovery_period.toFixed(1) + "yr" : "N/A";
-    setOptimizeResult("Train: " + trainStr + " | Test: " + testStr + " (" + totalCombos.toLocaleString() + " combos, 2-stage)");
+    const asymStr = best.bt !== best.st ? " [asym]" : "";
+    setOptimizeResult("Train: " + trainStr + " | Test: " + testStr + " (" + totalCombos.toLocaleString() + " combos" + asymStr + ")");
 
     const now = new Date().toISOString();
     const prevParams = tickerParams && tickerParams[s] ? {...tickerParams[s]} : null;
     const optimizedEntry = {
       vol_flag: best.vf, price_flag: best.pf, vol_price_mix: best.mx,
-      buy_threshold: best.th, sell_threshold: best.th,
+      buy_threshold: best.bt, sell_threshold: best.st,
       last_optimized: now, prev_params: prevParams,
       train_metrics: trainMetrics, test_metrics: testMetrics,
     };
     setTickerParams(prev => ({...prev, [s]: {...(prev && prev[s] || {}), ...optimizedEntry}}));
     setOptimizing(false);
-    analyzeTicker(s, years, best.mx, {volFlag: best.vf, priceFlag: best.pf, buyThreshold: best.th, sellThreshold: best.th});
+    analyzeTicker(s, years, best.mx, {volFlag: best.vf, priceFlag: best.pf, buyThreshold: best.bt, sellThreshold: best.st});
   };
 
   // Optimize a single ticker from the Params tab (doesn't touch ribbon state)
@@ -2105,14 +2115,14 @@ function App() {
     const recLimit = maxRecovery || 5;
     const result = await runOptimizer(ticker, years, recLimit, msg => {
       setBulkProgress(prev => prev ? {...prev, ticker: ticker + " " + msg} : null);
-    });
+    }, asymmetric);
     if (!result) return null;
     const {best, trainMetrics, testMetrics} = result;
     const now = new Date().toISOString();
     const prevParams = tickerParams && tickerParams[ticker] ? {...tickerParams[ticker]} : null;
     const entry = {
       vol_flag: best.vf, price_flag: best.pf, vol_price_mix: best.mx,
-      buy_threshold: best.th, sell_threshold: best.th,
+      buy_threshold: best.bt, sell_threshold: best.st,
       last_optimized: now, prev_params: prevParams,
       train_metrics: trainMetrics, test_metrics: testMetrics,
     };
@@ -2200,8 +2210,16 @@ function App() {
     <div className="app">
       <div className="header">
         <h1><span>Cherry</span>Head Capital<span style={{color:"var(--text2)",fontSize:14,fontWeight:400,marginLeft:12}}>Trading Model Dashboard</span></h1>
-        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.5.0</span></div>
+        <div className="header-right"><span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v4.6.0</span></div>
       </div>
+
+      {schwabAuth && (schwabAuth.needs_reauth || schwabAuth.refresh_days_remaining <= 3) && (
+        <div style={{background: schwabAuth.needs_reauth ? "var(--red)" : "#b45309", color:"#fff", padding:"8px 16px", fontSize:12, fontWeight:600, textAlign:"center", borderRadius:6, margin:"0 0 8px"}}>
+          {schwabAuth.needs_reauth
+            ? "Schwab token expired! Run: python3 schwab_auth.py to re-authenticate"
+            : "Schwab token expires in " + schwabAuth.refresh_days_remaining + " days \u2014 consider re-authenticating soon"}
+        </div>
+      )}
 
       <div className="nav-tabs">
         <div className={"nav-tab"+(page==="account"&&view!=="detail"?" active":"")} onClick={()=>{setPage("account");setView("dashboard");}}>Performance</div>
@@ -2239,6 +2257,7 @@ function App() {
               <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
               <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
               <div className="cg"><label>Max Recovery (yrs)</label><input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:80}}/></div>
+              <div className="cg"><label style={{fontSize:9}}>Asym Thresholds</label><input type="checkbox" checked={asymmetric} onChange={e=>setAsymmetric(e.target.checked)} style={{width:16,height:16,margin:"4px 0 0"}}/></div>
               <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
               <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{optimizing?"Optimizing...":"Optimize"}</button>
               {hasUncommittedChanges && <button onClick={commitParams} disabled={saving||optimizing} style={{background:"var(--green)",color:"#000",border:"none",fontWeight:600}}>{saving?"Saving...":"Commit"}</button>}
@@ -2342,33 +2361,74 @@ function App() {
                 {allParamTickers.length} tickers {"\u2014"} click Optimize to find best params, Commit to save to GitHub
               </span>
             </div>
-            <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-              <div className="cg" style={{marginRight:8}}>
+            <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+              <div className="cg" style={{marginRight:4}}>
                 <label style={{fontSize:10}}>Eval Period</label>
                 <select value={years} onChange={e=>setYears(Number(e.target.value))} style={{fontSize:12}}>
                   <option value={1}>1 Year</option><option value={2}>2 Years</option><option value={3}>3 Years</option>
                   <option value={5}>5 Years</option><option value={7}>7 Years</option><option value={10}>10 Years</option>
                 </select>
               </div>
-              <div className="cg" style={{marginRight:8}}>
+              <div className="cg" style={{marginRight:4}}>
                 <label style={{fontSize:10}}>Max Recovery (yrs)</label>
                 <input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:70,fontSize:12}}/>
               </div>
+              <div className="cg" style={{marginRight:4}}>
+                <label style={{fontSize:9}}>Asym</label>
+                <input type="checkbox" checked={asymmetric} onChange={e=>setAsymmetric(e.target.checked)} style={{width:16,height:16,margin:"4px 0 0"}}/>
+              </div>
               <button onClick={optimizeAll} disabled={bulkProgress && bulkProgress.current !== bulkProgress.total} style={{background:"var(--bg3)",border:"1px solid var(--border)",fontSize:12}}>
-                {bulkProgress && bulkProgress.current !== bulkProgress.total ? "Optimizing " + bulkProgress.current + "/" + bulkProgress.total + "..." : "Optimize All"}
+                {bulkProgress && bulkProgress.current !== bulkProgress.total ? "Optimizing..." : "Optimize All"}
               </button>
               <button onClick={commitAll} disabled={saving} style={{background:"var(--green)",color:"#000",border:"none",fontWeight:600,fontSize:12}}>
                 {saving ? "Saving..." : "Commit All"}
               </button>
-              {bulkProgress && <span style={{fontSize:10,color:"var(--blue)"}}>{bulkProgress.ticker}</span>}
+              <button onClick={()=>{
+                const data = {};
+                for (const t of allParamTickers) {
+                  const p = tickerParams && tickerParams[t];
+                  if (p) { data[t] = {vol_flag:p.vol_flag, price_flag:p.price_flag, vol_price_mix:p.vol_price_mix, buy_threshold:p.buy_threshold, sell_threshold:p.sell_threshold}; }
+                }
+                const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
+                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ticker_params_backup.json"; a.click();
+              }} style={{background:"var(--bg3)",border:"1px solid var(--border)",fontSize:12}}>Export</button>
+              <label style={{background:"var(--bg3)",border:"1px solid var(--border)",fontSize:12,padding:"4px 12px",borderRadius:4,cursor:"pointer"}}>
+                Import
+                <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{
+                  const file = e.target.files[0]; if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = ev => {
+                    try {
+                      const imported = JSON.parse(ev.target.result);
+                      setTickerParams(prev => ({...prev, ...imported}));
+                      setSaveMsg("Imported " + Object.keys(imported).length + " tickers");
+                    } catch { setSaveMsg("Error: Invalid JSON file"); }
+                  };
+                  reader.readAsText(file); e.target.value = "";
+                }}/>
+              </label>
               {saveMsg && <span style={{fontSize:10,color:saveMsg.startsWith("Error")?"var(--red)":"var(--green)"}}>{saveMsg}</span>}
             </div>
+            {bulkProgress && bulkProgress.current !== bulkProgress.total && (
+              <div style={{marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                  <span style={{fontSize:11,color:"var(--text2)"}}>{bulkProgress.current}/{bulkProgress.total}</span>
+                  <span style={{fontSize:11,color:"var(--blue)"}}>{bulkProgress.ticker}</span>
+                </div>
+                <div style={{height:6,background:"var(--bg3)",borderRadius:3,overflow:"hidden"}}>
+                  <div style={{height:"100%",background:"var(--blue)",borderRadius:3,transition:"width 0.3s",width:(bulkProgress.current/bulkProgress.total*100)+"%"}}/>
+                </div>
+              </div>
+            )}
+            {bulkProgress && bulkProgress.current === bulkProgress.total && (
+              <div style={{marginBottom:12,fontSize:11,color:"var(--green)"}}>{bulkProgress.ticker}</div>
+            )}
             <div style={{overflowX:"auto"}}>
               <table>
                 <thead><tr>
                   {[
                     {key:"ticker",label:"Ticker"}, {key:"vol_flag",label:"Vol"}, {key:"price_flag",label:"Price"},
-                    {key:"vol_price_mix",label:"Mix"}, {key:"buy_threshold",label:"Threshold"},
+                    {key:"vol_price_mix",label:"Mix"}, {key:"buy_threshold",label:"Buy Th"}, {key:"sell_threshold",label:"Sell Th"},
                     {key:"train_ret",label:"Train Ret"}, {key:"train_rec",label:"Train Rec"},
                     {key:"test_ret",label:"Test Ret"}, {key:"test_rec",label:"Test Rec"},
                     {key:"last_optimized",label:"Last Optimized"},
@@ -2387,7 +2447,9 @@ function App() {
                     const isChanged = p && c && (p.vol_flag !== c.vol_flag || p.price_flag !== c.price_flag ||
                       p.vol_price_mix !== c.vol_price_mix || p.buy_threshold !== c.buy_threshold || p.sell_threshold !== c.sell_threshold);
                     const isNew = p && !c;
-                    return {ticker, p, isChanged, isNew};
+                    const overfit = p && p.train_metrics && p.test_metrics &&
+                      p.test_metrics.avg_yr_return < p.train_metrics.avg_yr_return * 0.5;
+                    return {ticker, p, isChanged, isNew, overfit};
                   }).sort((a, b) => {
                     const k = paramsSortCfg.key;
                     let av, bv;
@@ -2400,18 +2462,25 @@ function App() {
                     else { av = a.p ? a.p[k] : 0; bv = b.p ? b.p[k] : 0; }
                     if (av === bv) return 0;
                     return (av > bv ? 1 : -1) * paramsSortCfg.dir;
-                  }).map(({ticker, p, isChanged, isNew}) => (
-                    <tr key={ticker} style={{background: isChanged || isNew ? "rgba(255,165,0,0.06)" : "transparent"}}>
-                      <td style={{fontWeight:600,cursor:"pointer",color:"var(--blue)"}} onClick={()=>handleSelect(ticker)}>{ticker}</td>
+                  }).map(({ticker, p, isChanged, isNew, overfit}) => (
+                    <tr key={ticker} style={{background: overfit ? "rgba(239,68,68,0.08)" : isChanged || isNew ? "rgba(255,165,0,0.06)" : "transparent"}}>
+                      <td style={{fontWeight:600,cursor:"pointer",color:"var(--blue)"}} onClick={()=>handleSelect(ticker)}>
+                        {ticker}
+                        {overfit && <span title="Possible overfit: test return less than 50% of train" style={{color:"var(--red)",marginLeft:4,cursor:"help"}}>!</span>}
+                      </td>
                       <td>{p ? p.vol_flag : "\u2014"}</td>
                       <td>{p ? p.price_flag : "\u2014"}</td>
                       <td>{p ? p.vol_price_mix.toFixed(2) : "\u2014"}</td>
                       <td>{p ? p.buy_threshold.toFixed(4) : "\u2014"}</td>
+                      <td style={{color: p && p.buy_threshold !== p.sell_threshold ? "orange" : "inherit"}}>
+                        {p ? p.sell_threshold.toFixed(4) : "\u2014"}
+                        {p && p.buy_threshold !== p.sell_threshold && <span style={{fontSize:8,marginLeft:2}} title="Asymmetric thresholds">A</span>}
+                      </td>
                       <td style={{color: p && p.train_metrics ? "var(--green)" : "var(--text2)"}}>
                         {p && p.train_metrics ? (p.train_metrics.avg_yr_return * 100).toFixed(1) + "%" : "\u2014"}
                       </td>
                       <td>{p && p.train_metrics ? p.train_metrics.recovery_period.toFixed(1) + "y" : "\u2014"}</td>
-                      <td style={{color: p && p.test_metrics ? "var(--green)" : "var(--text2)"}}>
+                      <td style={{color: p && p.test_metrics ? (overfit ? "var(--red)" : "var(--green)") : "var(--text2)"}}>
                         {p && p.test_metrics ? (p.test_metrics.avg_yr_return * 100).toFixed(1) + "%" : "\u2014"}
                       </td>
                       <td>{p && p.test_metrics ? p.test_metrics.recovery_period.toFixed(1) + "y" : "\u2014"}</td>
@@ -2459,6 +2528,14 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v4.6.0",date:"2026-04-02",items:[
+              "Asymmetric thresholds \u2014 optimizer can now search separate buy/sell thresholds (checkbox toggle)",
+              "Optimize All progress bar with visual indicator and ticker status",
+              "Export/Import buttons on Params tab for JSON backup and restore",
+              "Overfit warning flag \u2014 red ! icon and highlight when test return is less than 50% of train return",
+              "Separate Buy Th / Sell Th columns in Params table with asymmetric indicator",
+              "Schwab token expiry banner \u2014 global warning when refresh token expires within 3 days",
+            ]},
             {ver:"v4.5.0",date:"2026-04-02",items:[
               "Params tab — table of all 25 tickers with committed params, train/test metrics, and last optimized date",
               "Per-row Optimize, Save, and Revert actions on each ticker",
