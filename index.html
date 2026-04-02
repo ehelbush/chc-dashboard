@@ -196,6 +196,11 @@ const DEFINITIONS = [
   ["Overfitting Flag", "A red '!' warning shown in the Params table when a ticker's test return is less than 50% of its training return. Indicates the optimized parameters may be curve-fit to historical noise rather than capturing genuine signal. The row is highlighted red and the Test Ret column turns red. Check the WF Avg column for a second opinion."],
   ["Portfolio Optimization", "Optimizes params across all tickers simultaneously to maximize the portfolio-level Sharpe ratio (return / |max drawdown|). Generates top-3 param candidates per ticker via coarse grid, pre-computes daily balance series, then uses greedy coordinate descent to find the combination that maximizes the equal-weight portfolio's risk-adjusted return. Considers correlations implicitly \u2014 tickers with uncorrelated returns are favored."],
   ["Sharpe Ratio (Portfolio)", "Used by the Portfolio Optimizer as the objective function: annualized portfolio return divided by the absolute value of the maximum drawdown. Higher is better. Unlike the traditional Sharpe ratio (which uses volatility), this variant penalizes deep drawdowns directly, aligning with the model's focus on recovery period and loss management."],
+  ["Optimize All", "Queues optimization for every ticker in the portfolio sequentially. Each ticker runs the full two-stage optimizer with the current Max Recovery and Asymmetric Thresholds settings. Progress is shown with a bar and current ticker name. Results are staged (not saved) until you click Commit All."],
+  ["Commit / Commit All", "Saves staged parameter changes to GitHub via the save_params API. Commit saves a single ticker; Commit All saves all tickers in one pass. Changes are written to data/ticker_params.json in the repository and take effect on the next Vercel deploy (~30 seconds). Revert restores a ticker's params to the last committed version."],
+  ["Export / Import", "Export downloads all current ticker params as a JSON file for backup. Import loads a previously exported JSON file, replacing all current params. Useful for comparing parameter sets or restoring after a bad optimization run."],
+  ["Last Optimized", "The date when a ticker's parameters were last optimized. Shown in the Params table to help identify stale params that may need re-optimization after new market data arrives."],
+  ["Train Recovery / Test Recovery", "The estimated recovery period calculated separately for the training set (first 80% of data) and the test set (last 20%). A large gap between train and test recovery is a strong overfitting signal. For example, Train Rec: 2yr but Test Rec: 999yr means the params worked well historically but failed on unseen data. The recovery blows up because the test return is near-zero or negative, making mathematical recovery impossible. When you see this pattern, the optimized parameters are likely curve-fit to specific market conditions in the training period."],
 ];
 
 // ── CHC Trading Model (JavaScript port) ─────────────────────────────────────
@@ -3245,6 +3250,39 @@ function App() {
               </label>
               {saveMsg && <span style={{fontSize:10,color:saveMsg.startsWith("Error")?"var(--red)":"var(--green)"}}>{saveMsg}</span>}
             </div>
+            <details style={{marginBottom:12,background:"var(--bg2)",border:"1px solid var(--border)",borderRadius:8,padding:"10px 14px"}}>
+              <summary style={{cursor:"pointer",fontWeight:600,fontSize:12,color:"var(--text)"}}>How to Use the Params Tab</summary>
+              <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginTop:10}}>
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",marginBottom:6}}>Typical Workflow</div>
+                <ol style={{margin:"0 0 12px",paddingLeft:20}}>
+                  <li><strong>Optimize All</strong> {"\u2014"} runs the two-stage optimizer on every ticker. Results are staged locally, not saved yet.</li>
+                  <li><strong>Review results</strong> {"\u2014"} check for overfitting (red ! flags). Focus on tickers where Test Ret and WF Avg are reasonable relative to Train Ret.</li>
+                  <li><strong>Revert bad results</strong> {"\u2014"} click Revert on any ticker where the new params look worse than the committed ones.</li>
+                  <li><strong>Commit All</strong> {"\u2014"} saves all staged params to GitHub. Takes effect on the next Vercel deploy (~30 seconds).</li>
+                </ol>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",marginBottom:6}}>Reading the Table</div>
+                <ul style={{margin:"0 0 12px",paddingLeft:20}}>
+                  <li><strong>Vol / Price / Mix / Buy Th / Sell Th</strong> {"\u2014"} the five model parameters per ticker. These control the trading signal calculation.</li>
+                  <li><strong>Train Ret / Train Rec</strong> {"\u2014"} annualized return and recovery period on the first 80% of data (the training set).</li>
+                  <li><strong>Test Ret / Test Rec</strong> {"\u2014"} same metrics on the last 20% of data (unseen by the optimizer). This is the real test of whether params generalize.</li>
+                  <li><strong>WF Avg</strong> {"\u2014"} walk-forward validation average return across multiple rolling folds. A second opinion on out-of-sample performance.</li>
+                  <li><strong>Red ! flag</strong> {"\u2014"} overfitting warning. Test return is less than 50% of training return.</li>
+                  <li><strong>Orange row</strong> {"\u2014"} unsaved changes (params differ from last commit).</li>
+                </ul>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",marginBottom:6}}>Understanding Train vs Test Recovery Divergence</div>
+                <p style={{margin:"0 0 12px"}}>
+                  A large gap between Train Rec and Test Rec is the strongest overfitting signal. For example, if Train Rec shows 2.0y but Test Rec shows 999.0y, it means the optimized parameters worked well on historical data but failed completely on the unseen test period. The recovery period blows up because the test return is near-zero or negative {"\u2014"} making mathematical recovery impossible. This typically means the params are curve-fit to specific market conditions in the training period and won{"'"}t generalize. Consider using a shorter eval period, tightening the max recovery constraint, or accepting that certain tickers may not be well-suited for timing.
+                </p>
+
+                <div style={{fontWeight:600,fontSize:12,color:"var(--text)",marginBottom:6}}>Other Actions</div>
+                <ul style={{margin:0,paddingLeft:20}}>
+                  <li><strong>Portfolio Opt</strong> {"\u2014"} optimizes all tickers jointly to maximize portfolio-level Sharpe ratio rather than individual returns.</li>
+                  <li><strong>Export / Import</strong> {"\u2014"} backup and restore param sets as JSON files. Useful for comparing different optimization runs.</li>
+                </ul>
+              </div>
+            </details>
             {bulkProgress && bulkProgress.current !== bulkProgress.total && (
               <div style={{marginBottom:12}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
