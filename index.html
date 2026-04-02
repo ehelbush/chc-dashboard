@@ -548,7 +548,7 @@ function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad, r
         })}
         {hLines && hLines.map((hl,i) => {
           const hy = yS(hl.value);
-          if (hy < p.t || hy > p.t + h2) return null;
+          if (hy >= p.t + h2 || hy <= p.t) return null;
           return <g key={"hl"+i}>
             <line x1={p.l} y1={hy} x2={width-p.r} y2={hy} stroke={hl.color||"#9498a8"} strokeWidth={hl.width||1} strokeDasharray={hl.dash||"6,3"} opacity={hl.opacity||0.8}/>
             {hl.label && <text x={width-p.r+4} y={hy+3} fill={hl.color||"#9498a8"} fontSize="9">{hl.label}</text>}
@@ -2590,7 +2590,6 @@ function App() {
       trainMetrics: { avg_yr_return: best.ret, recovery_period: best.rec },
       testMetrics: testResult ? { avg_yr_return: testResult.ret, recovery_period: testResult.rec } : null,
       walkForward: wfAvgReturn !== null ? { avg_return: wfAvgReturn, folds: wfReturns.length, returns: wfReturns } : null,
-    };
     };
   };
 
