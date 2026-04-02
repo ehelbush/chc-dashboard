@@ -2646,9 +2646,20 @@ function App() {
 
             {/* Two-column layout: Analyze params | Optimize params */}
             <div style={{display:"flex",gap:16,flexWrap:"wrap",alignItems:"stretch"}}>
-              {/* Analyze: uses these model params to run a single backtest */}
+              {/* Optimize: primary action — searches for best params automatically */}
+              <div style={{flex:"1 1 320px",background:"var(--bg3)",borderRadius:8,padding:"10px 14px",border:"1px solid var(--blue)"}}>
+                <div style={{fontSize:11,fontWeight:600,color:"var(--blue)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Optimize <span style={{fontWeight:400,textTransform:"none",letterSpacing:0,color:"var(--text2)"}}>{"\u2014"} find best params automatically</span></div>
+                <div className="controls" style={{flexWrap:"wrap",gap:10}}>
+                  <div className="cg"><label>Max Recovery (yrs)</label><input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:80}}/></div>
+                  <div className="cg"><label style={{fontSize:9}}>Asym Thresholds</label><input type="checkbox" checked={asymmetric} onChange={e=>setAsymmetric(e.target.checked)} style={{width:16,height:16,margin:"4px 0 0"}}/></div>
+                  <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol}>{optimizing?"Optimizing...":"Optimize"}</button>
+                </div>
+                <div style={{fontSize:10,color:"var(--text2)",marginTop:6}}>Searches ~11K param combos using Ticker + Period above. Best result populates Model Params and runs Analyze.</div>
+              </div>
+
+              {/* Analyze: manual backtest with specific params */}
               <div style={{flex:"1 1 400px",background:"var(--bg3)",borderRadius:8,padding:"10px 14px",border:"1px solid var(--border)"}}>
-                <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Model Params <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(used by Analyze)</span></div>
+                <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Model Params <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>{"\u2014"} manual backtest with specific params</span></div>
                 <div className="controls" style={{flexWrap:"wrap",gap:10}}>
                   <div className="cg"><label>Vol Flag</label>
                     <select value={volFlag} onChange={e=>setVolFlag(Number(e.target.value))} style={{width:90}}>
@@ -2663,19 +2674,8 @@ function App() {
                   <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
                   <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
                   <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
-                  <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol}>{analyzing?"Analyzing...":"Analyze"}</button>
+                  <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{analyzing?"Analyzing...":"Analyze"}</button>
                 </div>
-              </div>
-
-              {/* Optimize: searches for best params automatically */}
-              <div style={{flex:"1 1 280px",background:"var(--bg3)",borderRadius:8,padding:"10px 14px",border:"1px solid var(--border)"}}>
-                <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Optimizer Settings <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(constraints for Optimize)</span></div>
-                <div className="controls" style={{flexWrap:"wrap",gap:10}}>
-                  <div className="cg"><label>Max Recovery (yrs)</label><input type="number" value={maxRecovery} onChange={e=>setMaxRecovery(Number(e.target.value))} step={0.5} min={0.5} style={{width:80}}/></div>
-                  <div className="cg"><label style={{fontSize:9}}>Asym Thresholds</label><input type="checkbox" checked={asymmetric} onChange={e=>setAsymmetric(e.target.checked)} style={{width:16,height:16,margin:"4px 0 0"}}/></div>
-                  <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{optimizing?"Optimizing...":"Optimize"}</button>
-                </div>
-                <div style={{fontSize:10,color:"var(--text2)",marginTop:6}}>Searches ~11K param combos using Ticker + Period above. Best result populates Model Params.</div>
               </div>
             </div>
 
