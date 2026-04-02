@@ -2120,9 +2120,16 @@ function App() {
     return entry;
   };
 
-  // Bulk optimize all 25 tickers
+  // All known tickers: SEED_DATA + any extras in tickerParams
+  const allParamTickers = React.useMemo(() => {
+    const seed = SEED_DATA.map(t => t.ticker);
+    const extra = tickerParams ? Object.keys(tickerParams).filter(t => !seed.includes(t)).sort() : [];
+    return [...seed, ...extra];
+  }, [tickerParams]);
+
+  // Bulk optimize all tickers
   const optimizeAll = async () => {
-    const tickers = SEED_DATA.map(t => t.ticker);
+    const tickers = allParamTickers;
     setBulkProgress({current: 0, total: tickers.length, ticker: "", results: {}});
     for (let i = 0; i < tickers.length; i++) {
       const t = tickers[i];
@@ -2161,8 +2168,7 @@ function App() {
     setSaveMsg("Saving all params...");
     // Build full params object from current tickerParams, keeping only core fields
     const full = {};
-    const tickers = SEED_DATA.map(t => t.ticker);
-    for (const t of tickers) {
+    for (const t of allParamTickers) {
       const p = tickerParams && tickerParams[t];
       if (p) {
         full[t] = {
@@ -2333,7 +2339,7 @@ function App() {
             <div className="card-title" style={{marginBottom:12}}>
               Model Parameters
               <span style={{color:"var(--text2)",fontWeight:400,fontSize:12,marginLeft:12}}>
-                {SEED_DATA.length} tickers {"\u2014"} click Optimize to find best params, Commit to save to GitHub
+                {allParamTickers.length} tickers {"\u2014"} click Optimize to find best params, Commit to save to GitHub
               </span>
             </div>
             <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
@@ -2375,7 +2381,7 @@ function App() {
                   <th style={{fontSize:10}}>Actions</th>
                 </tr></thead>
                 <tbody>
-                  {SEED_DATA.map(t => t.ticker).map(ticker => {
+                  {allParamTickers.map(ticker => {
                     const p = tickerParams && tickerParams[ticker];
                     const c = committedParams && committedParams[ticker];
                     const isChanged = p && c && (p.vol_flag !== c.vol_flag || p.price_flag !== c.price_flag ||
