@@ -415,6 +415,14 @@ async function fetchYahooData(symbol, years) {
   return { error: `Could not fetch live data for ${symbol}. Screener summary data may be available.` };
 }
 
+async function fetchProfile(symbol) {
+  try {
+    const res = await fetch(`/api/yahoo_profile?symbol=${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(10000) });
+    if (res.ok) return await res.json();
+  } catch (e) { /* silent */ }
+  return null;
+}
+
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 const pct = (v, dec=1) => v == null || isNaN(v) ? "\u2014" : (v*100).toFixed(dec)+"%";
@@ -697,6 +705,115 @@ function TickerDetail({data,onBack}) {
           </div>
         </div>
       </div>
+
+      {/* Company Overview + Financials + News */}
+      {data.profile && (data.profile.description || data.profile.financials || (data.profile.news && data.profile.news.length > 0)) && (() => {
+        const p = data.profile;
+        const f = p.financials || {};
+        const ks = p.key_stats || {};
+        const fmtB = v => { if (v == null) return "\u2014"; if (Math.abs(v) >= 1e12) return "$"+(v/1e12).toFixed(1)+"T"; if (Math.abs(v) >= 1e9) return "$"+(v/1e9).toFixed(1)+"B"; if (Math.abs(v) >= 1e6) return "$"+(v/1e6).toFixed(0)+"M"; return "$"+v.toLocaleString(); };
+        const fmtPct = v => v == null ? "\u2014" : (v * 100).toFixed(1) + "%";
+        const fmtN = (v, dec) => v == null ? "\u2014" : v.toFixed(dec != null ? dec : 1);
+        const fmtDate = ts => { if (!ts) return ""; try { const d = new Date(ts * 1000); return d.toLocaleDateString("en-US", {month:"short",day:"numeric"}); } catch(e) { return ""; } };
+
+        return (
+          <div>
+            {/* Company Description */}
+            {p.description && (
+              <div className="card">
+                <div className="card-title" style={{marginBottom:8}}>
+                  About {data.symbol}
+                  {p.sector && <span style={{fontWeight:400,textTransform:"none",letterSpacing:0,marginLeft:8,color:"var(--text2)"}}>{p.industry || p.sector}</span>}
+                </div>
+                <div style={{fontSize:12,color:"var(--text2)",lineHeight:1.7,maxHeight:120,overflow:"hidden",position:"relative"}} id={"desc-"+data.symbol}>
+                  {p.description}
+                </div>
+                <div style={{display:"flex",gap:16,marginTop:8,fontSize:11,color:"var(--text2)"}}>
+                  {p.sector && <span>Sector: <strong style={{color:"var(--text)"}}>{p.sector}</strong></span>}
+                  {p.employees && <span>Employees: <strong style={{color:"var(--text)"}}>{p.employees.toLocaleString()}</strong></span>}
+                  {p.website && <span>Web: <strong style={{color:"var(--blue)"}}>{p.website.replace(/https?:\/\/(www\.)?/,"")}</strong></span>}
+                </div>
+              </div>
+            )}
+
+            {/* Financial Metrics */}
+            {(f.revenue || ks.market_cap) && (
+              <div className="card">
+                <div className="card-title">Financials & Valuation</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16}}>
+                  {/* Valuation */}
+                  <div>
+                    <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Valuation</div>
+                    <div className="dr"><span>Market Cap</span><span style={{fontWeight:600}}>{fmtB(ks.market_cap)}</span></div>
+                    <div className="dr"><span>Enterprise Value</span><span>{fmtB(ks.enterprise_value)}</span></div>
+                    <div className="dr"><span>P/E (Trailing)</span><span>{fmtN(ks.trailing_pe)}</span></div>
+                    <div className="dr"><span>P/E (Forward)</span><span>{fmtN(ks.forward_pe)}</span></div>
+                    <div className="dr"><span>EV / Revenue</span><span>{fmtN(ks.ev_to_revenue)}x</span></div>
+                    <div className="dr"><span>EV / EBITDA</span><span>{fmtN(ks.ev_to_ebitda)}x</span></div>
+                    <div className="dr"><span>P/S (TTM)</span><span>{fmtN(ks.price_to_sales)}x</span></div>
+                    <div className="dr"><span>PEG Ratio</span><span>{fmtN(ks.peg_ratio)}</span></div>
+                  </div>
+
+                  {/* Revenue & Margins */}
+                  <div>
+                    <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Revenue & Margins</div>
+                    <div className="dr"><span>Revenue (TTM)</span><span style={{fontWeight:600}}>{fmtB(f.revenue)}</span></div>
+                    <div className="dr"><span>Revenue Growth</span><span className={f.revenue_growth >= 0 ? "pos" : "neg"}>{fmtPct(f.revenue_growth)}</span></div>
+                    <div className="dr"><span>Gross Margin</span><span>{fmtPct(f.gross_margin)}</span></div>
+                    <div className="dr"><span>Operating Margin</span><span>{fmtPct(f.operating_margin)}</span></div>
+                    <div className="dr"><span>EBITDA Margin</span><span>{fmtPct(f.ebitda_margin)}</span></div>
+                    <div className="dr"><span>Net Margin</span><span>{fmtPct(f.profit_margin)}</span></div>
+                    <div className="dr"><span>Cash Flow Margin</span><span>{fmtPct(f.cash_flow_margin)}</span></div>
+                  </div>
+
+                  {/* Balance Sheet & Efficiency */}
+                  <div>
+                    <div style={{fontSize:11,fontWeight:600,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Cash Flow & Balance Sheet</div>
+                    <div className="dr"><span>Free Cash Flow</span><span style={{color:f.free_cash_flow > 0 ? "var(--green)" : "var(--red)"}}>{fmtB(f.free_cash_flow)}</span></div>
+                    <div className="dr"><span>Operating CF</span><span>{fmtB(f.operating_cash_flow)}</span></div>
+                    <div className="dr"><span>Cash</span><span>{fmtB(f.total_cash)}</span></div>
+                    <div className="dr"><span>Total Debt</span><span>{fmtB(f.total_debt)}</span></div>
+                    <div className="dr"><span>Current Ratio</span><span>{fmtN(f.current_ratio)}</span></div>
+                    <div className="dr"><span>Return on Equity</span><span>{fmtPct(f.return_on_equity)}</span></div>
+                    <div className="dr"><span>Beta</span><span>{fmtN(ks.beta, 2)}</span></div>
+                    <div className="dr"><span>Short % Float</span><span>{fmtPct(ks.short_pct_float)}</span></div>
+                  </div>
+                </div>
+
+                {/* Analyst Target */}
+                {f.target_mean_price && (
+                  <div style={{marginTop:12,padding:"8px 14px",background:"var(--bg3)",borderRadius:6,display:"flex",gap:20,alignItems:"center",fontSize:12,flexWrap:"wrap"}}>
+                    <span style={{color:"var(--text2)"}}>Analyst Consensus:</span>
+                    <span style={{fontWeight:600,color:"var(--blue)",textTransform:"capitalize"}}>{f.recommendation || "\u2014"}</span>
+                    <span style={{color:"var(--text2)"}}>Target: <strong style={{color:"var(--text)"}}>${f.target_mean_price.toFixed(2)}</strong></span>
+                    {f.current_price && <span style={{color: f.target_mean_price > f.current_price ? "var(--green)" : "var(--red)"}}>
+                      ({((f.target_mean_price / f.current_price - 1) * 100).toFixed(1)}% {f.target_mean_price > f.current_price ? "upside" : "downside"})
+                    </span>}
+                    {f.analyst_count && <span style={{color:"var(--text2)"}}>({f.analyst_count} analysts)</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Recent News */}
+            {p.news && p.news.length > 0 && (
+              <div className="card">
+                <div className="card-title">Recent News</div>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {p.news.map((n, i) => (
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,paddingBottom:i !== p.news.length - 1 ? 10 : 0,borderBottom:i !== p.news.length - 1 ? "1px solid var(--border)" : "none"}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:500,color:"var(--text)",lineHeight:1.4}}>{n.title}</div>
+                        <div style={{fontSize:11,color:"var(--text2)",marginTop:2}}>{n.publisher}{n.date ? " \u00B7 " + fmtDate(n.date) : ""}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2031,8 +2148,11 @@ function App() {
       let dates, closes, volumes, name = s;
       let hasFullData = false;
 
-      // Try live Yahoo Finance data first (via Vercel API)
-      const yfData = await fetchYahooData(s, yr + 1);
+      // Fetch price data and profile in parallel
+      const [yfData, profileData] = await Promise.all([
+        fetchYahooData(s, yr + 1),
+        fetchProfile(s),
+      ]);
       if (!yfData.error) {
         dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; name = yfData.name;
         hasFullData = true;
@@ -2051,6 +2171,7 @@ function App() {
         if (result.error) { setError(result.error); setAnalyzing(false); return; }
         result.symbol = s;
         result.name = name;
+        result.profile = profileData;
         setTickerDetail(result);
       } else {
         // Fall back to screener summary data (no chart, but shows metrics)
@@ -2075,6 +2196,7 @@ function App() {
             chart: { dates: [], trading_balance: [], bh_balance: [] },
             params: { vol_price_mix: 0.72, buy_threshold: 0.0012, sell_threshold: -0.0012 },
             summaryOnly: true,
+            profile: profileData,
           });
         } else {
           setError(`No data found for ${s}. It may not be a valid ticker symbol.`);
@@ -2603,7 +2725,7 @@ function App() {
             style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"5px 10px",borderRadius:8,fontSize:14,cursor:"pointer",lineHeight:1}}>
             {theme==="dark"?"\u2600":"\u263D"}
           </button>
-          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.1.0</span>
+          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.2.0</span>
         </div>
       </div>
 
@@ -3011,6 +3133,14 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.2.0",date:"2026-04-02",items:[
+              "Company fundamentals on Analysis detail \u2014 business description, sector, industry, employee count",
+              "Financials & Valuation panel \u2014 revenue, revenue growth, gross/operating/EBITDA/net/cash flow margins, P/E, EV/Revenue, EV/EBITDA, P/S, PEG, FCF, debt, ROE, beta",
+              "Analyst consensus \u2014 recommendation, mean price target with upside/downside %, analyst count",
+              "Recent News \u2014 latest 5 headlines with publisher and date from Yahoo Finance",
+              "New api/yahoo_profile.py serverless endpoint fetching quoteSummary + search news APIs",
+              "Profile data fetched in parallel with price data \u2014 no added latency",
+            ]},
             {ver:"v5.1.0",date:"2026-04-02",items:[
               "Dark/Light mode toggle \u2014 click the sun/moon icon in the header, preference saved to localStorage",
               "Search in Definitions \u2014 filter definitions by keyword, searches both terms and descriptions",

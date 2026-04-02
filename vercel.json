@@ -2,7 +2,8 @@
   "rewrites": [
     { "source": "/api/yahoo", "destination": "/api/yahoo.py" },
     { "source": "/api/schwab", "destination": "/api/schwab.py" },
-    { "source": "/api/save_params", "destination": "/api/save_params.py" }
+    { "source": "/api/save_params", "destination": "/api/save_params.py" },
+    { "source": "/api/yahoo_profile", "destination": "/api/yahoo_profile.py" }
   ],
   "headers": [
     {
