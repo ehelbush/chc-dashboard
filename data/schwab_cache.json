@@ -1,6 +1,6 @@
 {
   "synced_at": "2026-04-02T06:49:35.507466+00:00",
-  "status": "live",
+  "status": "cached",
   "accounts": [
     {
       "account_id": "***2965",
@@ -493,9 +493,9 @@
     }
   },
   "auth_status": {
-    "connected": true,
-    "refresh_days_remaining": 6.9,
-    "needs_reauth": false,
+    "connected": false,
+    "refresh_days_remaining": 0,
+    "needs_reauth": true,
     "last_sync": "2026-04-02T06:49:35.507466+00:00"
   }
 }
