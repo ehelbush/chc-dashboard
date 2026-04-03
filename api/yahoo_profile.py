@@ -3,15 +3,50 @@ from http.server import BaseHTTPRequestHandler
 import json
 import urllib.request
 import urllib.parse
+import re
 
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
 
 
-def fetch_json(url):
-    req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode())
+def _get_crumb_and_cookie():
+    """Get a valid crumb and cookie for Yahoo Finance API."""
+    try:
+        req = urllib.request.Request("https://finance.yahoo.com/quote/AAPL/", headers=HEADERS)
+        opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
+        resp = opener.open(req, timeout=10)
+        html = resp.read().decode("utf-8", errors="ignore")
+        cookie_header = resp.headers.get("Set-Cookie", "")
+
+        # Extract crumb from page content
+        crumb_match = re.search(r'"crumb"\s*:\s*"([^"]+)"', html)
+        crumb = crumb_match.group(1) if crumb_match else None
+
+        # Get cookies from response
+        cookies = []
+        for header in resp.headers.get_all("Set-Cookie") or []:
+            cookies.append(header.split(";")[0])
+        cookie_str = "; ".join(cookies)
+
+        return crumb, cookie_str, opener
+    except Exception:
+        return None, None, None
+
+
+def fetch_json(url, cookie=None, opener=None):
+    headers = dict(HEADERS)
+    if cookie:
+        headers["Cookie"] = cookie
+    req = urllib.request.Request(url, headers=headers)
+    if opener:
+        resp = opener.open(req, timeout=10)
+    else:
+        resp = urllib.request.urlopen(req, timeout=10)
+    return json.loads(resp.read().decode())
 
 
 class handler(BaseHTTPRequestHandler):
@@ -29,12 +64,28 @@ class handler(BaseHTTPRequestHandler):
 
             # 1. Quotesummary — profile, financials, key stats
             modules = "assetProfile,financialData,defaultKeyStatistics,incomeStatementHistory,earningsTrend"
-            qs_url = (
-                f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
-                f"?modules={modules}"
-            )
+
+            # Get crumb/cookie for authenticated requests
+            crumb, cookie, opener = _get_crumb_and_cookie()
+
+            # Try multiple API endpoints (Yahoo blocks unauthenticated v10 from server IPs)
+            qs = None
+            urls = []
+            if crumb:
+                urls.append(f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules={modules}&crumb={crumb}")
+            urls.append(f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules={modules}")
+            urls.append(f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules={modules}")
+
             try:
-                qs = fetch_json(qs_url)
+                for qs_url in urls:
+                    try:
+                        qs = fetch_json(qs_url, cookie=cookie, opener=opener)
+                        if qs.get("quoteSummary", {}).get("result"):
+                            break
+                    except Exception:
+                        continue
+                if not qs:
+                    raise Exception("All quoteSummary endpoints failed")
                 qs_result = qs.get("quoteSummary", {}).get("result", [{}])[0]
 
                 # Asset profile
@@ -102,8 +153,8 @@ class handler(BaseHTTPRequestHandler):
                     if rev and ocf and rev > 0:
                         result["financials"]["cash_flow_margin"] = round(ocf / rev, 4)
 
-            except Exception:
-                pass  # quoteSummary may fail for some tickers
+            except Exception as e:
+                result["_qs_error"] = str(e)
 
             # 2. News via search API
             try:
@@ -111,7 +162,7 @@ class handler(BaseHTTPRequestHandler):
                     f"https://query1.finance.yahoo.com/v1/finance/search"
                     f"?q={symbol}&newsCount=5&quotesCount=0"
                 )
-                news_data = fetch_json(news_url)
+                news_data = fetch_json(news_url, cookie=cookie, opener=opener)
                 news_items = news_data.get("news", [])
                 result["news"] = [
                     {
