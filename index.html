@@ -809,85 +809,6 @@ function TickerDetail({data,onBack}) {
         </div>
       )}
 
-      {/* Trade Statistics */}
-      {ts.total_trades > 0 && !data.summaryOnly && (
-        <div className="card">
-          <div className="card-title">Trade Statistics</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Total Trades</div>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{ts.total_trades}</div>
-            </div>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Win Rate</div>
-              <div style={{fontSize:22,fontWeight:700,color:ts.win_rate >= 0.5 ? "var(--green)" : "var(--red)"}}>{(ts.win_rate*100).toFixed(0)}%</div>
-            </div>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Win</div>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--green)"}}>+{(ts.avg_win*100).toFixed(1)}%</div>
-            </div>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Loss</div>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--red)"}}>{(ts.avg_loss*100).toFixed(1)}%</div>
-            </div>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Best Trade</div>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--green)"}}>+{(ts.best_trade*100).toFixed(1)}%</div>
-            </div>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Worst Trade</div>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--red)"}}>{(ts.worst_trade*100).toFixed(1)}%</div>
-            </div>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Hold (days)</div>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{ts.avg_holding_days}</div>
-            </div>
-            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
-              <div style={{fontSize:11,color:"var(--text2)"}}>Time in Market</div>
-              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{(ts.time_in_market*100).toFixed(0)}%</div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Trade Log */}
-      {data.trades && data.trades.length > 0 && !data.summaryOnly && (
-        <div className="card">
-          <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <span>Trade Log ({data.trades.length} trades)</span>
-            <button onClick={()=>exportCSV(data.trades,[
-              {label:"Entry Date",field:"entry_date"},{label:"Exit Date",field:"exit_date"},
-              {label:"Entry Price",field:"entry_price"},{label:"Exit Price",field:"exit_price"},
-              {label:"Return %",field:"return_pct"},{label:"Days",field:"days"}
-            ],data.symbol+"_trades.csv")} style={{fontSize:11,padding:"4px 10px",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",fontWeight:500,textTransform:"none",letterSpacing:0}}>Export CSV</button>
-          </div>
-          <div className="table-wrap" style={{maxHeight:400,overflowY:"auto"}}>
-            <table>
-              <thead><tr>
-                <th style={{cursor:"default"}}>Entry Date</th><th style={{cursor:"default"}}>Exit Date</th>
-                <th style={{cursor:"default"}}>Entry Price</th><th style={{cursor:"default"}}>Exit Price</th>
-                <th style={{cursor:"default"}}>Return</th><th style={{cursor:"default"}}>Days</th>
-              </tr></thead>
-              <tbody>
-                {data.trades.slice().reverse().map((t, i) => (
-                  <tr key={i}>
-                    <td>{t.entry_date}</td>
-                    <td>{t.exit_date || <span style={{color:"var(--green)",fontWeight:600}}>Open</span>}</td>
-                    <td>${t.entry_price.toFixed(2)}</td>
-                    <td>${t.exit_price.toFixed(2)}</td>
-                    <td className={t.return_pct >= 0 ? "pos" : "neg"} style={{fontWeight:600}}>
-                      {t.return_pct >= 0 ? "+" : ""}{(t.return_pct*100).toFixed(1)}%
-                      {t.open && <span style={{fontSize:10,marginLeft:4,color:"var(--text2)"}}>(unrealized)</span>}
-                    </td>
-                    <td>{t.days}d</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
       {/* Company Overview + Financials + News */}
       {data.profile && (data.profile.description || data.profile.financials || (data.profile.news && data.profile.news.length > 0)) && (() => {
         const p = data.profile;
@@ -996,6 +917,85 @@ function TickerDetail({data,onBack}) {
           </div>
         );
       })()}
+
+      {/* Trade Statistics */}
+      {ts.total_trades > 0 && !data.summaryOnly && (
+        <div className="card">
+          <div className="card-title">Trade Statistics</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12}}>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Total Trades</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{ts.total_trades}</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Win Rate</div>
+              <div style={{fontSize:22,fontWeight:700,color:ts.win_rate >= 0.5 ? "var(--green)" : "var(--red)"}}>{(ts.win_rate*100).toFixed(0)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Win</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--green)"}}>+{(ts.avg_win*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Loss</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--red)"}}>{(ts.avg_loss*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Best Trade</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--green)"}}>+{(ts.best_trade*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Worst Trade</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--red)"}}>{(ts.worst_trade*100).toFixed(1)}%</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Avg Hold (days)</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{ts.avg_holding_days}</div>
+            </div>
+            <div style={{background:"var(--bg3)",borderRadius:8,padding:"10px 14px",textAlign:"center"}}>
+              <div style={{fontSize:11,color:"var(--text2)"}}>Time in Market</div>
+              <div style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>{(ts.time_in_market*100).toFixed(0)}%</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trade Log */}
+      {data.trades && data.trades.length > 0 && !data.summaryOnly && (
+        <div className="card">
+          <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>Trade Log ({data.trades.length} trades)</span>
+            <button onClick={()=>exportCSV(data.trades,[
+              {label:"Entry Date",field:"entry_date"},{label:"Exit Date",field:"exit_date"},
+              {label:"Entry Price",field:"entry_price"},{label:"Exit Price",field:"exit_price"},
+              {label:"Return %",field:"return_pct"},{label:"Days",field:"days"}
+            ],data.symbol+"_trades.csv")} style={{fontSize:11,padding:"4px 10px",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",fontWeight:500,textTransform:"none",letterSpacing:0}}>Export CSV</button>
+          </div>
+          <div className="table-wrap" style={{maxHeight:400,overflowY:"auto"}}>
+            <table>
+              <thead><tr>
+                <th style={{cursor:"default"}}>Entry Date</th><th style={{cursor:"default"}}>Exit Date</th>
+                <th style={{cursor:"default"}}>Entry Price</th><th style={{cursor:"default"}}>Exit Price</th>
+                <th style={{cursor:"default"}}>Return</th><th style={{cursor:"default"}}>Days</th>
+              </tr></thead>
+              <tbody>
+                {data.trades.slice().reverse().map((t, i) => (
+                  <tr key={i}>
+                    <td>{t.entry_date}</td>
+                    <td>{t.exit_date || <span style={{color:"var(--green)",fontWeight:600}}>Open</span>}</td>
+                    <td>${t.entry_price.toFixed(2)}</td>
+                    <td>${t.exit_price.toFixed(2)}</td>
+                    <td className={t.return_pct >= 0 ? "pos" : "neg"} style={{fontWeight:600}}>
+                      {t.return_pct >= 0 ? "+" : ""}{(t.return_pct*100).toFixed(1)}%
+                      {t.open && <span style={{fontSize:10,marginLeft:4,color:"var(--text2)"}}>(unrealized)</span>}
+                    </td>
+                    <td>{t.days}d</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
