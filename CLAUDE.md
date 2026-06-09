@@ -73,6 +73,11 @@ The Refresh Prices button is built but could be enhanced:
 - **You must re-run `python3 schwab_auth.py` (browser) at least once every 7 days**, otherwise account + NAV sync silently freezes while the market screener keeps updating (making the workflow look healthy). Set a recurring reminder.
 - Token rotation also needs a valid `GH_PAT` secret (used by `gh secret set SCHWAB_TOKENS`). If the PAT expires, the rotated token can't be persisted and sync breaks at the next run. The same `GH_PAT` powers Vercel's save_params API — update it in both places.
 - Safeguards (added 2026-06): `schwab_sync.py` no longer crashes on a malformed token file (falls back to the graceful "needs re-auth" path); the dashboard flags data as stale when `synced_at` is >4 days old regardless of self-reported status (`index.html:1551`); the workflow surfaces a warning annotation on Schwab failure and a staleness gate fails the run when account data is >4 days old.
+- **Re-auth automation (macOS, added 2026-06):** `schwab_reauth.py` is a wrapper that re-auths only when the refresh token is within `REAUTH_THRESHOLD_DAYS` (default 3) of expiry, then syncs, pushes the `SCHWAB_TOKENS` secret, and commits. A LaunchAgent (`launchd/com.cherryhead.schwab-reauth.plist`) runs it weekday mornings at 8am. The browser login is still manual — it just shrinks re-auth to "click Allow." Logs in `logs/schwab_reauth.log`.
+  - Install: `cp launchd/com.cherryhead.schwab-reauth.plist ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.cherryhead.schwab-reauth.plist`
+  - Uninstall: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.cherryhead.schwab-reauth.plist`
+  - Test now: `launchctl kickstart -k gui/$(id -u)/com.cherryhead.schwab-reauth` (only opens the browser if the token is actually near expiry).
+  - Full zero-touch is impossible: Schwab requires an interactive login + MFA for a new refresh token, and there is no longer-lived grant for personal accounts.
 
 ### Other Ideas
 - **Asymmetric thresholds**: Implemented and available via checkbox. Team should evaluate whether the added search space is worth it.
