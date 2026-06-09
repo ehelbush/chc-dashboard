@@ -66353,65 +66353,65 @@
   },
   {
     "date": "2026-06-09",
-    "total_value": 1258171.37,
-    "total_equity": 1258171.53,
+    "total_value": 1260679.91,
+    "total_equity": 1260680.07,
     "cash_balance": 0.16,
-    "net_flows": -3384.62,
-    "day_gain": -40651.54,
+    "net_flows": 40723.79,
+    "day_gain": -38215.25,
     "positions_count": 9,
     "holdings": [
       {
         "symbol": "AVGO",
-        "market_value": 302641.04,
-        "weight": 0.2405,
+        "market_value": 303490.62,
+        "weight": 0.2407,
         "quantity": 794.0
       },
       {
         "symbol": "LLY",
-        "market_value": 225888.3,
-        "weight": 0.1795,
+        "market_value": 226480.32,
+        "weight": 0.1796,
         "quantity": 198.0
       },
       {
         "symbol": "ANET",
-        "market_value": 166625.13,
-        "weight": 0.1324,
+        "market_value": 166507.21,
+        "weight": 0.1321,
         "quantity": 1123.0
       },
       {
         "symbol": "MU",
-        "market_value": 106866.52,
-        "weight": 0.0849,
+        "market_value": 107403.45,
+        "weight": 0.0852,
         "quantity": 119.0
       },
       {
         "symbol": "NVDA",
-        "market_value": 94285.32,
+        "market_value": 94475.15,
         "weight": 0.0749,
         "quantity": 463.0
       },
       {
         "symbol": "GLW",
-        "market_value": 92356.16,
-        "weight": 0.0734,
+        "market_value": 92103.66,
+        "weight": 0.0731,
         "quantity": 543.0
       },
       {
         "symbol": "FIX",
-        "market_value": 91768.11,
-        "weight": 0.0729,
+        "market_value": 92035.55,
+        "weight": 0.073,
         "quantity": 51.7794
       },
       {
         "symbol": "GOOG",
-        "market_value": 91040.79,
-        "weight": 0.0724,
+        "market_value": 91117.95,
+        "weight": 0.0723,
         "quantity": 253.0
       },
       {
         "symbol": "TPR",
-        "market_value": 86700.0,
-        "weight": 0.0689,
+        "market_value": 87066.0,
+        "weight": 0.0691,
         "quantity": 600.0
       }
     ],
