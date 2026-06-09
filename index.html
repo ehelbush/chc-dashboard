@@ -1548,7 +1548,13 @@ function SchwabAccount({onAnalyzeTicker}) {
     { name: "Manual Recovery",start: "2025-06-13", end: null,         color: "#22c55e" },
   ];
 
-  const isStale = schwabData.status === "cached";
+  // Staleness: trust the cache's self-reported "cached" status, but also treat
+  // data as stale if synced_at is too old — a hard crash mid-sync leaves the
+  // cache frozen at status:"live", so age is the only reliable backstop.
+  const syncAgeDays = schwabData.synced_at
+    ? (Date.now() - new Date(schwabData.synced_at).getTime()) / 86400000
+    : Infinity;
+  const isStale = schwabData.status === "cached" || syncAgeDays > 4;
   const auth = schwabData.auth_status || {};
   const summary = schwabData.portfolio_summary || {};
   const benchmarks = schwabData.benchmarks || {};

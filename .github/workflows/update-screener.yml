@@ -31,12 +31,18 @@ jobs:
         run: echo "$SCHWAB_TOKENS" > schwab_tokens.json
 
       - name: Run Schwab sync
+        id: schwab
         if: env.SCHWAB_APP_KEY != ''
+        continue-on-error: true   # keep the screener running even if Schwab is down
         env:
           SCHWAB_APP_KEY: ${{ secrets.SCHWAB_APP_KEY }}
           SCHWAB_APP_SECRET: ${{ secrets.SCHWAB_APP_SECRET }}
           SCHWAB_TOKENS: ${{ secrets.SCHWAB_TOKENS }}
-        run: python schwab_sync.py || echo "Schwab sync failed (token may be expired)"
+        run: python schwab_sync.py
+
+      - name: Flag Schwab sync failure
+        if: steps.schwab.outcome == 'failure'
+        run: echo "::warning title=Schwab sync failed::Account/NAV data may be stale. Re-authenticate locally with python3 schwab_auth.py"
 
       - name: Update Schwab tokens secret
         if: hashFiles('schwab_tokens.json') != ''
@@ -69,3 +75,24 @@ jobs:
           git add data/
           git commit -m "Daily data sync $(date +%Y-%m-%d)"
           git push
+
+      # ── Staleness gate: fail the run (loudly) if account data is too old ──
+      # Runs last so the screener commit above always lands first.
+      - name: Schwab data staleness gate
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          from datetime import datetime, timezone
+          try:
+              d = json.load(open('data/schwab_cache.json'))
+              ts = d.get('synced_at')
+              age = (datetime.now(timezone.utc) - datetime.fromisoformat(ts)).total_seconds() / 86400
+              print(f"Schwab cache synced_at={ts} ({age:.1f} days old)")
+              if age > 4:
+                  print(f"::error title=Schwab data stale::Account data is {age:.0f} days old. Re-authenticate: python3 schwab_auth.py")
+                  sys.exit(1)
+          except Exception as e:
+              print(f"::error title=Staleness check failed::{e}")
+              sys.exit(1)
+          PY

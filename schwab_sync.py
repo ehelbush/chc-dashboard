@@ -50,7 +50,11 @@ def load_env():
 
 def load_tokens():
     if TOKEN_FILE.exists():
-        return json.loads(TOKEN_FILE.read_text())
+        try:
+            return json.loads(TOKEN_FILE.read_text())
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"  [!] Token file is malformed ({e}). Run: python3 schwab_auth.py")
+            return None
     return None
 
 

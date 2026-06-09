@@ -69,9 +69,10 @@ The Refresh Prices button is built but could be enhanced:
 2. **Refresh on tab focus** — Fetch new prices when user switches back to the dashboard
 
 ### Priority 4: Schwab Token Monitoring
-- Tokens expire every 7 days. The daily workflow auto-refreshes them.
-- If the workflow fails for a full week, manual re-auth is needed: `python3 schwab_auth.py` (requires browser)
-- The dashboard shows a warning banner when the token is near expiry
+- **The refresh token is hard-capped at 7 days and does NOT extend on use.** The daily workflow only refreshes the short-lived *access* token *within* that 7-day window (preserving the original `refresh_expires_at`, see `schwab_sync.py:94`). It cannot extend the refresh token.
+- **You must re-run `python3 schwab_auth.py` (browser) at least once every 7 days**, otherwise account + NAV sync silently freezes while the market screener keeps updating (making the workflow look healthy). Set a recurring reminder.
+- Token rotation also needs a valid `GH_PAT` secret (used by `gh secret set SCHWAB_TOKENS`). If the PAT expires, the rotated token can't be persisted and sync breaks at the next run. The same `GH_PAT` powers Vercel's save_params API — update it in both places.
+- Safeguards (added 2026-06): `schwab_sync.py` no longer crashes on a malformed token file (falls back to the graceful "needs re-auth" path); the dashboard flags data as stale when `synced_at` is >4 days old regardless of self-reported status (`index.html:1551`); the workflow surfaces a warning annotation on Schwab failure and a staleness gate fails the run when account data is >4 days old.
 
 ### Other Ideas
 - **Asymmetric thresholds**: Implemented and available via checkbox. Team should evaluate whether the added search space is worth it.
