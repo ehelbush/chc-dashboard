@@ -130,6 +130,16 @@ def main():
     closes_h = fetch_closes(at, sym_keys, START_DATE, live_date)
     closes_b = fetch_closes(at, BENCH, START_DATE, live_date)
 
+    # Forward-fill: last close on/before a date. Non-trading days (weekends/
+    # holidays) have no candle, so carry the prior close forward — otherwise the
+    # day values to $0 and the NAV index spikes.
+    import bisect
+    _ff = {k: (sorted(v), v) for k, v in {**closes_h, **closes_b}.items()}
+    def price_on(key, d):
+        dates, dic = _ff.get(key, ([], {}))
+        i = bisect.bisect_right(dates, d) - 1
+        return dic[dates[i]] if i >= 0 else None
+
     # Verify replay reconciles to current positions.
     final = dict(pos_now)
     chk = {k: v for k, v in final.items() if abs(v) > 1e-9}
@@ -147,7 +157,7 @@ def main():
         for sym, qty in pos.items():
             if abs(qty) < 1e-9:
                 continue
-            px = closes_h.get(sym, {}).get(d)
+            px = price_on(sym, d)
             if px is None:
                 continue
             v = round(qty * px, 2)
@@ -157,7 +167,7 @@ def main():
         total = round(mv + cash, 2)
         for h in holdings:
             h["weight"] = round(h["market_value"] / total, 4) if total else 0
-        bench = {k: round(closes_b[k][d], 2) for k in BENCH if d in closes_b.get(k, {})}
+        bench = {k: round(price_on(k, d), 2) for k in BENCH if price_on(k, d) is not None}
         nf = round(flows.get(d, 0), 2)
         entry = {
             "date": d, "total_value": total, "total_equity": total, "cash_balance": cash,
