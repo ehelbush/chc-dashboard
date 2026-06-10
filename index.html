@@ -568,7 +568,7 @@ function Chart({ data, width: propWidth, height, lines, xKey, yFormat, topPad, r
       {tip&&tip.idx<data.length&&(
         <div className="ctt" style={{left:Math.min(tip.x+12,width-160),top:20}}>
           <div style={{color:"#9498a8",marginBottom:4}}>{data[tip.idx][xKey]}</div>
-          {lines.map((l,i)=><div key={i} style={{color:l.color}}>{l.label}: {yFormat ? yFormat(data[tip.idx][l.key]) : dlr(data[tip.idx][l.key])}</div>)}
+          {lines.map((l,i)=>{const v=data[tip.idx][l.key]; if(v==null) return null; return <div key={i} style={{color:l.color}}>{l.label}: {yFormat ? yFormat(v) : dlr(v)}</div>;})}
         </div>
       )}
       <div className="cl">{lines.map((l,i)=><div key={i} className="cli"><div className="cld" style={{background:l.color}}/>{l.label}</div>)}</div>
