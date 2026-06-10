@@ -1422,7 +1422,7 @@ function SchwabAccount({onAnalyzeTicker}) {
   const [loading, setLoading] = useState(true);
   const [holdSort, setHoldSort] = useState({key:"market_value",dir:-1});
   const [benchView, setBenchView] = useState("returns"); // returns | drawdown
-  const [enabledBenchmarks, setEnabledBenchmarks] = useState({SPY:true, QQQ:true, IWM:true, DIA:true});
+  const [enabledBenchmarks, setEnabledBenchmarks] = useState({SPY:true, QQQ:true, IWM:true, DIA:true, COMPX:true});
   const [historyData, setHistoryData] = useState(null);
   const [historyRange, setHistoryRange] = useState("ALL");
   const [balanceRange, setBalanceRange] = useState("ALL");
@@ -1595,8 +1595,8 @@ function SchwabAccount({onAnalyzeTicker}) {
     .sort((a,b) => b.value - a.value);
 
   // Benchmark colors
-  const bColors = {SPY:"#3b82f6", QQQ:"#8b5cf6", IWM:"#f59e0b", DIA:"#06b6d4"};
-  const bNames = {SPY:"S&P 500", QQQ:"Nasdaq 100", IWM:"Russell 2000", DIA:"Dow 30"};
+  const bColors = {SPY:"#3b82f6", QQQ:"#8b5cf6", IWM:"#f59e0b", DIA:"#06b6d4", COMPX:"#10b981"};
+  const bNames = {SPY:"S&P 500", QQQ:"Nasdaq 100", IWM:"Russell 2000", DIA:"Dow 30", COMPX:"Nasdaq Comp"};
 
   // Sector bar colors
   const sColors = ["#3b82f6","#22c55e","#f59e0b","#8b5cf6","#ef4444","#06b6d4","#ec4899","#f97316","#14b8a6","#a855f7","#64748b","#6366f1"];

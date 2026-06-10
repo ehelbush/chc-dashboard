@@ -189,16 +189,18 @@ def fetch_price_history(access_token, symbol, period_type="year", period=1, freq
         "frequencyType": frequency_type,
         "frequency": frequency,
     })
-    data = schwab_get(f"/pricehistory?symbol={symbol}&{params}", access_token, base=MARKET_BASE)
+    data = schwab_get(f"/pricehistory?symbol={urllib.parse.quote(symbol)}&{params}", access_token, base=MARKET_BASE)
     return data
 
 
 def compute_benchmarks(access_token, portfolio_symbols, portfolio_weights):
     """Fetch benchmark data (SPY, QQQ) and compute comparison metrics."""
     benchmarks = {}
-    benchmark_symbols = ["SPY", "QQQ", "IWM", "DIA"]  # S&P 500, Nasdaq 100, Russell 2000, Dow 30
+    # (cache_key, schwab_symbol). COMPX = Nasdaq Composite (matches Schwab's "NASDAQ").
+    benchmark_symbols = [("SPY", "SPY"), ("QQQ", "QQQ"), ("IWM", "IWM"),
+                         ("DIA", "DIA"), ("COMPX", "$COMPX")]
 
-    for sym in benchmark_symbols:
+    for key, sym in benchmark_symbols:
         hist = fetch_price_history(access_token, sym, period_type="year", period=5)
         if hist and "candles" in hist:
             candles = hist["candles"]
@@ -230,8 +232,8 @@ def compute_benchmarks(access_token, portfolio_symbols, portfolio_weights):
                     dd = (c["close"] / peak) - 1
                     max_dd = min(max_dd, dd)
 
-                benchmarks[sym] = {
-                    "symbol": sym,
+                benchmarks[key] = {
+                    "symbol": key,
                     "current_price": round(current, 2),
                     "one_yr_return": round(one_yr_return, 4),
                     "ytd_return": round(ytd_return, 4),
