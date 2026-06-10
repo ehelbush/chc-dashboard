@@ -1595,7 +1595,7 @@ function SchwabAccount({onAnalyzeTicker}) {
     .sort((a,b) => b.value - a.value);
 
   // Benchmark colors
-  const bColors = {SPY:"#3b82f6", QQQ:"#8b5cf6", IWM:"#f59e0b", DIA:"#06b6d4", COMPX:"#10b981"};
+  const bColors = {SPY:"#3b82f6", QQQ:"#8b5cf6", IWM:"#f59e0b", DIA:"#06b6d4", COMPX:"#ec4899"};
   const bNames = {SPY:"S&P 500", QQQ:"Nasdaq 100", IWM:"Russell 2000", DIA:"Dow 30", COMPX:"Nasdaq Comp"};
 
   // Sector bar colors
@@ -1692,6 +1692,9 @@ function SchwabAccount({onAnalyzeTicker}) {
         const chcStart = lastChcPrice || 1;
         // Normalize SPY to start at same value as CHC price
         let chcIndex = chcStart;
+        // Nasdaq Composite (COMPX) data begins Dec 2025, so it may start mid-range.
+        // Leave it null until it appears, then anchor it to the CHC index at that point.
+        let lastCompxPrice = 0, compxBase = null, compxStartPrice = 0;
 
         for (let i = 0; i < source.length; i++) {
           const d = source[i];
@@ -1711,17 +1714,28 @@ function SchwabAccount({onAnalyzeTicker}) {
           // Normalize SPY so it starts at the same value as CHC
           const spyNorm = (lastSpyPrice / spyStart) * chcStart;
 
+          // Nasdaq Composite — null until data begins, then rebased to CHC at that point
+          if (d.benchmark_prices?.COMPX > 0) lastCompxPrice = d.benchmark_prices.COMPX;
+          let compxNorm = null;
+          if (lastCompxPrice > 0) {
+            if (compxBase === null) { compxBase = chcIndex; compxStartPrice = lastCompxPrice; }
+            compxNorm = (lastCompxPrice / compxStartPrice) * compxBase;
+          }
+
           chartData.push({
             date: d.date,
             portfolio: Math.round(chcIndex * 10000) / 10000,
             spy: Math.round(spyNorm * 10000) / 10000,
+            compx: compxNorm != null ? Math.round(compxNorm * 10000) / 10000 : null,
           });
         }
 
         const lastPortfolio = chartData[chartData.length-1].portfolio;
         const lastSpy = chartData[chartData.length-1].spy;
+        const lastCompx = chartData[chartData.length-1].compx;
         const portfolioReturn = ((lastPortfolio / chcStart) - 1) * 100;
         const spyReturn = ((lastSpy / chcStart) - 1) * 100;
+        const compxReturn = (lastCompx != null && compxBase) ? ((lastCompx / compxBase) - 1) * 100 : null;
 
         // Annualized returns
         const startDate = new Date(source[0].date);
@@ -1752,6 +1766,7 @@ function SchwabAccount({onAnalyzeTicker}) {
               lines={[
                 {key:"portfolio", color:"#22c55e", label:`CHC (${portfolioReturn>=0?"+":""}${portfolioReturn.toFixed(1)}%)`, width:2.5},
                 {key:"spy", color:"#3b82f6", label:`S&P 500 (${spyReturn>=0?"+":""}${spyReturn.toFixed(1)}%)`, width:1.5, opacity:0.7},
+                ...(compxReturn != null ? [{key:"compx", color:"#ec4899", label:`Nasdaq (${compxReturn>=0?"+":""}${compxReturn.toFixed(1)}%)`, width:1.5, opacity:0.7}] : []),
               ]}
               regions={historyRange === "ALL" ? STRATEGY_ERAS.map(e => ({
                 startDate: e.start, endDate: e.end || "9999-12-31", color: e.color, label: e.name,
