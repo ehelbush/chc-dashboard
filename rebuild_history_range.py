@@ -167,6 +167,19 @@ def main():
         rebuilt.append(entry)
         prev = total
 
+    # Maintain the CHC per-share index (NAV/share) continuously across the rebuilt
+    # range via TWR, anchored to the last real chc_price before START_DATE. The
+    # charts and Strategy table rely on chc_price; dropping it truncates them.
+    kept_chc = [e for e in history if e["date"] < START_DATE and e.get("chc_price", 0) > 0]
+    if kept_chc:
+        idx = kept_chc[-1]["chc_price"]
+        prev_val = kept_chc[-1].get("total_value") or kept_chc[-1].get("total_equity") or 0
+        for e in rebuilt:
+            if idx and prev_val:
+                idx *= (1 + (e["total_value"] - prev_val - e["net_flows"]) / prev_val)
+                e["chc_price"] = round(idx, 6)
+            prev_val = e["total_value"]
+
     # Backfill COMPX onto the live entry too (so the comp reaches today).
     if "COMPX" in closes_b and live_date in closes_b["COMPX"]:
         live.setdefault("benchmark_prices", {})["COMPX"] = round(closes_b["COMPX"][live_date], 2)

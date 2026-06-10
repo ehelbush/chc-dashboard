@@ -328,6 +328,17 @@ def append_history(cache):
     benchmarks = cache.get("benchmarks", {})
     benchmark_prices = {sym: bm.get("current_price", 0) for sym, bm in benchmarks.items()}
 
+    # Maintain the CHC per-share index (NAV/share) via TWR after the spreadsheet
+    # ends, so chc_price stays continuous (the charts/strategy table rely on it).
+    chc_price = None
+    prior = [e for e in history if e.get("date", "") < today]
+    if prior:
+        p = prior[-1]
+        pchc = p.get("chc_price", 0)
+        pval = p.get("total_value") or p.get("total_equity") or 0
+        if pchc and pval:
+            chc_price = round(pchc * (1 + (total_value - pval - net_flows) / pval), 6)
+
     snapshot = {
         "date": today,
         "total_value": round(total_value, 2),
@@ -339,6 +350,8 @@ def append_history(cache):
         "holdings": holdings,
         "benchmark_prices": benchmark_prices,
     }
+    if chc_price:
+        snapshot["chc_price"] = chc_price
 
     # Update existing entry for today, or append new one
     updated = False
