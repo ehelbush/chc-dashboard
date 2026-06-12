@@ -72,6 +72,26 @@ def load_tokens():
     return None
 
 
+def push_tokens_secret():
+    """Push the token file to the SCHWAB_TOKENS GitHub secret so CI stays in sync.
+
+    Without this, a manual re-auth leaves CI holding the old refresh token,
+    which dies 7 days after ITS issuance and silently freezes account sync.
+    Best-effort: requires `gh` to be installed and authenticated.
+    """
+    import subprocess
+    try:
+        with open(TOKEN_FILE) as f:
+            subprocess.run(
+                ["gh", "secret", "set", "SCHWAB_TOKENS"],
+                stdin=f, check=True, timeout=60,
+            )
+        print("  SCHWAB_TOKENS GitHub secret updated (CI will use the new token).")
+    except Exception as e:
+        print(f"  [!] Could not update SCHWAB_TOKENS secret ({e}).")
+        print("      Run manually: gh secret set SCHWAB_TOKENS < schwab_tokens.json")
+
+
 def exchange_code_for_tokens(auth_code, app_key, app_secret, callback_url):
     """Exchange authorization code for access + refresh tokens."""
     # URL-decode the auth code if it was encoded
@@ -326,6 +346,7 @@ def main():
     tokens = run_auth_flow(app_key, app_secret, callback_url)
     if tokens:
         print("\n  Authentication complete! You're connected to Schwab.")
+        push_tokens_secret()
         print("  Run `python3 schwab_sync.py` to fetch and cache your account data.")
     else:
         print("\n  Authentication failed. Check your credentials and try again.")
