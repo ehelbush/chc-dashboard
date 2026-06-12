@@ -171,6 +171,39 @@ def fetch_transactions(access_token, account_hash, days=90):
     return data or []
 
 
+# Transaction types that are investment return, not external money movement
+NON_FLOW_TXN_TYPES = {"TRADE", "DIVIDEND_OR_INTEREST"}
+
+
+def fetch_external_flows(access_token, account_hashes, start_date, end_date):
+    """Sum actual external cash flows (deposits/withdrawals/journals) by date.
+
+    Queries real transactions instead of inferring flows from value changes,
+    which misclassifies market gains as deposits whenever more than one
+    trading day has passed between syncs. Dividends and trades are excluded:
+    they are return, not flows. Returns {date_str: net_amount} over
+    [start_date, end_date], or None if any API call fails.
+    """
+    flows = {}
+    start_str = f"{start_date}T00:00:00.000Z"
+    end_str = f"{end_date}T23:59:59.000Z"
+    for acct_hash in account_hashes:
+        data = schwab_get(
+            f"/accounts/{acct_hash}/transactions?startDate={start_str}&endDate={end_str}",
+            access_token,
+        )
+        if data is None:
+            return None
+        for txn in data:
+            if txn.get("type") in NON_FLOW_TXN_TYPES:
+                continue
+            amt = txn.get("netAmount") or 0
+            d = (txn.get("time") or txn.get("tradeDate") or "")[:10]
+            if amt and d:
+                flows[d] = round(flows.get(d, 0) + amt, 2)
+    return flows
+
+
 def fetch_quotes(access_token, symbols):
     """Fetch current quotes for a list of symbols."""
     if not symbols:
@@ -286,7 +319,7 @@ def compute_sector_breakdown(positions):
     return {"sectors": result, "total_value": round(total_value, 2)}
 
 
-def append_history(cache):
+def append_history(cache, access_token=None, account_hashes=None):
     """Append a daily snapshot to portfolio_history.json for performance tracking."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -303,15 +336,28 @@ def append_history(cache):
     total_equity = summary.get("total_equity", 0)
     total_cash = summary.get("total_cash", 0)
 
-    # Estimate net flows: value change minus market-driven gain
-    # Use total_value (not total_equity) since backfilled data may have inaccurate equity
+    # Net flows: prefer actual transfer transactions over the value-change
+    # estimate. The estimate (value change minus day gain) silently turns
+    # market gains into phantom "deposits" whenever the previous entry is
+    # more than one trading day old.
     day_gain = sum(a.get("day_gain", 0) for a in cache.get("accounts", []))
     net_flows = 0
-    if history:
-        prev = history[-1]
+    prior_entries = [e for e in history if e.get("date", "") < today]
+    if prior_entries:
+        prev = prior_entries[-1]
         prev_value = prev.get("total_value", prev.get("total_equity", total_value))
         value_change = total_value - prev_value
-        net_flows = round(value_change - day_gain, 2)
+        measured = None
+        if access_token and account_hashes:
+            measured = fetch_external_flows(access_token, account_hashes, prev["date"], today)
+        if measured is not None:
+            net_flows = round(sum(v for d, v in measured.items() if d > prev["date"]), 2)
+        else:
+            gap_days = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(prev["date"], "%Y-%m-%d")).days
+            if gap_days <= 1:
+                net_flows = round(value_change - day_gain, 2)
+            else:
+                print(f"  [!] {gap_days}-day gap with no transaction data; assuming zero net flows")
 
     # Build lightweight holdings snapshot
     holdings = []
@@ -330,14 +376,25 @@ def append_history(cache):
 
     # Maintain the CHC per-share index (NAV/share) via TWR after the spreadsheet
     # ends, so chc_price stays continuous (the charts/strategy table rely on it).
+    # Anchor on the most recent entry that has chc_price and chain TWR through
+    # any intermediate entries missing it, so one gap doesn't break the index.
     chc_price = None
-    prior = [e for e in history if e.get("date", "") < today]
-    if prior:
-        p = prior[-1]
-        pchc = p.get("chc_price", 0)
-        pval = p.get("total_value") or p.get("total_equity") or 0
-        if pchc and pval:
-            chc_price = round(pchc * (1 + (total_value - pval - net_flows) / pval), 6)
+    anchor = None
+    for idx in range(len(prior_entries) - 1, -1, -1):
+        if prior_entries[idx].get("chc_price"):
+            anchor = idx
+            break
+    if anchor is not None:
+        chc = prior_entries[anchor]["chc_price"]
+        pval = prior_entries[anchor].get("total_value") or prior_entries[anchor].get("total_equity") or 0
+        for e in prior_entries[anchor + 1:]:
+            v = e.get("total_value") or e.get("total_equity") or 0
+            f = e.get("net_flows") or 0
+            if pval and v:
+                chc *= 1 + (v - pval - f) / pval
+                pval = v
+        if pval and total_value:
+            chc_price = round(chc * (1 + (total_value - pval - net_flows) / pval), 6)
 
     snapshot = {
         "date": today,
@@ -465,8 +522,20 @@ def backfill_missing_days(access_token):
 
     print(f"  Backfilling {len(new_dates)} trading days: {new_dates[0]} to {new_dates[-1]}")
 
+    # Real external flows for the gap, so deposits made during an outage
+    # aren't booked as market gains (and vice versa)
+    accounts = fetch_accounts(access_token) or []
+    flows_by_date = fetch_external_flows(
+        access_token, [a.get("hashValue") for a in accounts if a.get("hashValue")],
+        last_date, today_str,
+    )
+    if flows_by_date is None:
+        print("  [!] Could not fetch transactions for gap; assuming zero net flows")
+        flows_by_date = {}
+
     # Use the last known total_value to compute day_gain / net_flows
     prev_value = last_entry.get("total_value", 0)
+    prev_chc = last_entry.get("chc_price")
 
     new_entries = []
     for date_str in new_dates:
@@ -489,8 +558,9 @@ def backfill_missing_days(access_token):
         for h in holdings_snap:
             h["weight"] = round(h["market_value"] / total_value, 4) if total_value > 0 else 0
 
-        # Day gain = change in value (assumes no cash flows between syncs)
-        day_gain = round(total_value - prev_value, 2) if prev_value else 0
+        # Day gain = value change net of any real external flows that day
+        net_flows = flows_by_date.get(date_str, 0)
+        day_gain = round(total_value - prev_value - net_flows, 2) if prev_value else 0
 
         # Benchmark prices
         bench = {}
@@ -503,12 +573,16 @@ def backfill_missing_days(access_token):
             "total_value": round(total_value, 2),
             "total_equity": round(total_value, 2),
             "cash_balance": last_entry.get("cash_balance", 0),
-            "net_flows": 0,
+            "net_flows": net_flows,
             "day_gain": day_gain,
             "positions_count": len(holdings_snap),
             "holdings": holdings_snap,
             "benchmark_prices": bench,
         }
+        # Continue the CHC per-share index through backfilled days
+        if prev_chc and prev_value and total_value:
+            prev_chc = round(prev_chc * (1 + (total_value - prev_value - net_flows) / prev_value), 6)
+            entry["chc_price"] = prev_chc
         new_entries.append(entry)
         prev_value = total_value
 
@@ -740,7 +814,7 @@ def sync_all(app_key, app_secret):
     save_cache(cache)
 
     # Append to portfolio history for performance tracking
-    append_history(cache)
+    append_history(cache, access_token, [a.get("hashValue") for a in account_numbers if a.get("hashValue")])
 
     print(f"\n  Sync complete!")
     print(f"  {len(cache['accounts'])} account(s), {len(all_holdings)} positions")
