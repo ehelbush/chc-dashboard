@@ -188,6 +188,8 @@ const DEFINITIONS = [
   ["Max Loss", "The worst peak-to-trough drawdown observed during the evaluation period. Can be misleading if it reflects a single extreme event rather than typical behavior (see Stat3 Loss)."],
   ["Recovery Period", "Estimated years to recover from the maximum loss, given the average yearly return. Formula: -2 x ln(1 + maxLoss) / ln(1 + avgYearlyReturn). Lower is better. 'Never' means the average return is negative, so the asset cannot mathematically recover."],
   ["Market Cap", "Total market capitalization (share price x shares outstanding). Useful for filtering out micro-cap / penny stocks susceptible to pump-and-dump. Sourced from Yahoo Finance."],
+  ["Avg Hold (Holdings table)", "Weighted average holding period of the shares currently held in a position. Purchase lots are reconstructed FIFO from daily quantity changes in portfolio history: buys add a lot, sells consume the oldest lots first, and stock splits (quantity jumps without a matching market-value jump) scale existing lots without resetting their dates. Each remaining lot's age is weighted by its share count."],
+  ["Ann. % (Holdings table)", "The position's unrealized gain converted to a compound annual rate over its weighted average holding period: (1 + Gain%) ^ (365.25 / avg days held) - 1. Lets positions held for different lengths of time be compared on equal footing. Hidden for positions held under 30 days, where annualizing a few days of movement produces meaningless extremes."],
   ["Optimizer (Two-Stage Search)", "The parameter optimizer uses a two-pass grid search. Stage 1 does a coarse sweep across wide ranges (thresholds -0.1 to +0.1, mix 0-1 in 0.1 steps, all vol/price flag combos) \u2014 ~7,200 combinations. Stage 2 takes the top 10 results and refines with a tight grid around each (threshold \u00B10.01 in 0.0005 steps, mix \u00B10.1 in 0.02 steps) \u2014 ~4,000-5,000 more. Total ~11,000 evaluations covering a 10\u00D7 wider search space than single-pass."],
   ["Asymmetric Thresholds", "When enabled, Stage 2 tests 7 sell-threshold offsets around each buy threshold (-0.01, -0.005, -0.002, 0, +0.002, +0.005, +0.01), allowing different entry and exit signal levels. For example, buy at -0.02 but sell at -0.03. Stage 1 stays symmetric. Marked with [asym] in results and 'A' badge in the Params table."],
   ["Train/Test Split", "The optimizer splits the evaluation period 80/20. Parameters are optimized on the first 80% of data (training set) and then evaluated on the remaining 20% (test set). If the test return is far below the training return, the parameters may be overfit to historical noise. Both metrics are reported in the result line."],
@@ -491,6 +493,56 @@ const pc = v => v >= 0 ? "pos" : "neg";
 const rc = v => v <= 2 ? "rl" : v <= 4 ? "rm" : v <= 6 ? "rh" : "rc";
 const dlr = v => v == null ? "\u2014" : "$"+v.toLocaleString("en-US",{maximumFractionDigits:0});
 const fmtCap = v => { if (v == null || isNaN(v) || v === 0) return "\u2014"; if (v >= 1e12) return "$"+(v/1e12).toFixed(1)+"T"; if (v >= 1e9) return "$"+(v/1e9).toFixed(1)+"B"; if (v >= 1e6) return "$"+(v/1e6).toFixed(0)+"M"; return "$"+(v/1e3).toFixed(0)+"K"; };
+const fmtHoldDays = v => v == null ? "\u2014" : v >= 365 ? (v/365.25).toFixed(1)+"y" : Math.round(v)+"d";
+
+// Reconstruct each symbol's open purchase lots (FIFO) from daily quantity
+// changes in portfolio history, and return {symbol: weightedAvgHoldingDays}.
+// Quantity jumps where market value barely moves are treated as stock splits
+// (existing lots scale up) rather than new purchases.
+function computeHoldingPeriods(history) {
+  if (!history || history.length === 0) return {};
+  const lots = {};   // symbol -> [{qty, date}]
+  const prev = {};   // symbol -> {q, mv}
+  history.forEach(e => {
+    if (!e.holdings || e.holdings.length === 0) return;  // no per-position data; carry forward
+    const seen = {};
+    e.holdings.forEach(h => { seen[h.symbol] = h; });
+    const symbols = new Set([...Object.keys(prev), ...Object.keys(seen)]);
+    symbols.forEach(sym => {
+      const q = seen[sym] ? seen[sym].quantity || 0 : 0;
+      const mv = seen[sym] ? seen[sym].market_value || 0 : 0;
+      const p = prev[sym] || {q: 0, mv: 0};
+      if (q - p.q > 1e-9) {
+        const ratio = p.q > 0 ? q / p.q : 0;
+        const mvRatio = p.mv > 0 ? mv / p.mv : 0;
+        if (ratio >= 1.5 && ratio * 0.5 > mvRatio) {
+          // quantity jumped but market value didn't follow: split, not a buy
+          (lots[sym] || []).forEach(l => { l.qty *= ratio; });
+        } else {
+          (lots[sym] = lots[sym] || []).push({qty: q - p.q, date: e.date});
+        }
+      } else if (p.q - q > 1e-9) {
+        let sell = p.q - q;
+        const ls = lots[sym] || [];
+        while (sell > 1e-9 && ls.length > 0) {
+          if (sell - ls[0].qty > -1e-9) { sell -= ls[0].qty; ls.shift(); }
+          else { ls[0].qty -= sell; sell = 0; }
+        }
+      }
+      prev[sym] = {q, mv};
+    });
+  });
+  const now = Date.now();
+  const out = {};
+  Object.keys(lots).forEach(sym => {
+    const ls = lots[sym];
+    const tot = ls.reduce((s, l) => s + l.qty, 0);
+    if (tot > 1e-9) {
+      out[sym] = ls.reduce((s, l) => s + l.qty * (now - new Date(l.date + "T00:00:00Z").getTime()) / 86400000, 0) / tot;
+    }
+  });
+  return out;
+}
 
 
 // ── SVG Chart ───────────────────────────────────────────────────────────────
@@ -637,6 +689,8 @@ const COL_TIPS = {
   total_gain_pct:"Unrealized gain/loss as percentage of cost basis",
   day_gain_pct:"Today\u2019s price change as percentage",
   symbol:"Ticker symbol",
+  ann_return:"Unrealized gain annualized over the weighted average holding period. Hidden for positions held under 30 days, where annualizing produces misleading figures",
+  avg_hold_days:"Weighted average holding period of current shares, reconstructed FIFO from daily position history. Splits are detected and excluded",
 };
 
 function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
@@ -1522,6 +1576,9 @@ function SchwabAccount({onAnalyzeTicker}) {
 
   const handleHoldSort = key => setHoldSort(prev => ({key, dir: prev.key===key ? -prev.dir : 1}));
 
+  // Weighted average holding period per symbol, from daily position history
+  const holdAges = useMemo(() => computeHoldingPeriods(historyData), [historyData]);
+
   if (loading) return <div className="loading"><div className="spinner"></div> Loading Schwab account data...</div>;
 
   if (!schwabData || schwabData.status === "not_configured" || !schwabData.accounts || schwabData.accounts.length === 0) {
@@ -1563,7 +1620,14 @@ function SchwabAccount({onAnalyzeTicker}) {
 
   // Add portfolio weight to each holding
   const totalPortValue = allHoldings.reduce((s, h) => s + (h.market_value || 0), 0);
-  const holdingsWithWeight = allHoldings.map(h => ({...h, port_weight: totalPortValue > 0 ? h.market_value / totalPortValue : 0}));
+  const holdingsWithWeight = allHoldings.map(h => {
+    const age = holdAges[h.symbol] != null ? holdAges[h.symbol] : null;
+    // Annualizing sub-30-day positions produces absurd figures; suppress until seasoned
+    const annReturn = age != null && age >= 30 && h.total_gain_pct != null
+      ? Math.pow(1 + h.total_gain_pct, 365.25 / age) - 1
+      : null;
+    return {...h, port_weight: totalPortValue > 0 ? h.market_value / totalPortValue : 0, avg_hold_days: age, ann_return: annReturn};
+  });
 
   // Aggregate P&L
   const dayGainTotal = schwabData.accounts.reduce((s, a) => s + (a.day_gain || 0), 0);
@@ -2222,7 +2286,8 @@ function SchwabAccount({onAnalyzeTicker}) {
             {label:"Symbol",field:"symbol"},{label:"Sector",field:"sector"},{label:"Qty",field:"quantity"},
             {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},{label:"Mkt Value",field:"market_value"},
             {label:"Weight %",field:"port_weight"},{label:"Total Gain",field:"total_gain"},
-            {label:"Gain %",field:"total_gain_pct"},{label:"Day %",field:"day_gain_pct"}
+            {label:"Gain %",field:"total_gain_pct"},{label:"Ann Return",field:"ann_return"},
+            {label:"Avg Hold Days",field:"avg_hold_days"},{label:"Day %",field:"day_gain_pct"}
           ],"chc_holdings.csv")} style={{fontSize:11,padding:"4px 10px",background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text2)",fontWeight:500,textTransform:"none",letterSpacing:0}}>Export CSV</button>
         </div>
         <div className="table-wrap">
@@ -2234,7 +2299,8 @@ function SchwabAccount({onAnalyzeTicker}) {
                 {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},
                 {label:"Mkt Value",field:"market_value"},{label:"% Port",field:"port_weight"},
                 {label:"Total Gain",field:"total_gain"},
-                {label:"Gain %",field:"total_gain_pct"},{label:"Day %",field:"day_gain_pct"}
+                {label:"Gain %",field:"total_gain_pct"},{label:"Ann. %",field:"ann_return"},
+                {label:"Avg Hold",field:"avg_hold_days"},{label:"Day %",field:"day_gain_pct"}
               ].map(col => (
                 <th key={col.field} onClick={()=>handleHoldSort(col.field)} title={COL_TIPS[col.field]||""}>
                   {col.label}<span className="sa">{holdSort.key===col.field?(holdSort.dir===1?"\u25B2":"\u25BC"):"\u21C5"}</span>
@@ -2253,6 +2319,8 @@ function SchwabAccount({onAnalyzeTicker}) {
                   <td style={{fontWeight:600,color:"var(--blue)"}}>{(h.port_weight*100).toFixed(1)}%</td>
                   <td className={h.total_gain>=0?"pos":"neg"}>${h.total_gain.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
                   <td className={pc(h.total_gain_pct)}>{pct(h.total_gain_pct)}</td>
+                  <td className={h.ann_return != null ? pc(h.ann_return) : ""}>{pct(h.ann_return)}</td>
+                  <td style={{color:"var(--text2)"}}>{fmtHoldDays(h.avg_hold_days)}</td>
                   <td className={pc(h.day_gain_pct)}>{h.day_gain_pct != null ? h.day_gain_pct.toFixed(2) + "%" : "\u2014"}</td>
                 </tr>
               ))}
@@ -2999,7 +3067,7 @@ function App() {
             style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"5px 10px",borderRadius:8,fontSize:14,cursor:"pointer",lineHeight:1}}>
             {theme==="dark"?"\u2600":"\u263D"}
           </button>
-          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.3.0</span>
+          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.4.0</span>
         </div>
       </div>
 
@@ -3440,6 +3508,11 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.4.0",date:"2026-06-12",items:[
+              "Holdings table: Ann. % column, unrealized gain annualized over each position's weighted average holding period (hidden under 30 days held)",
+              "Holdings table: Avg Hold column, weighted average holding period per position, reconstructed FIFO from daily position history with stock-split detection",
+              "Both columns sortable, included in CSV export, with glossary entries in Definitions",
+            ]},
             {ver:"v5.3.0",date:"2026-04-02",items:[
               "Signal Chart \u2014 combined signal line over time with horizontal buy/sell threshold lines, visualizes crossovers and signal strength",
               "Drawdown Chart \u2014 drawdown % over time for both trading strategy and buy-and-hold, reveals drawdown depth and duration",
