@@ -103,8 +103,27 @@ def main():
     staged = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=PROJECT_DIR)
     if staged.returncode != 0:  # there are staged changes
         run(["git", "commit", "-m", f"Schwab re-auth + sync {datetime.now():%Y-%m-%d}"])
+        # CI commits a daily sync, so by the time we push, origin/main has almost
+        # always moved ahead and a plain push is rejected non-fast-forward. That
+        # used to silently strand the fresh data locally while the live site kept
+        # serving CI's stale needs_reauth cache. Rebase onto origin first, and on
+        # conflict prefer our just-synced data: in a rebase, "-X theirs" keeps the
+        # commit being replayed (ours), so the live token/cache always wins over
+        # CI's expired-token snapshot.
+        run(["git", "fetch", "origin"])
+        rebased = run(["git", "rebase", "-X", "theirs", "origin/main"])
+        if rebased.returncode != 0:
+            run(["git", "rebase", "--abort"])
+            log("Rebase onto origin/main failed — leaving commit unpushed.")
+            notify("Re-auth synced but auto-push failed — run `git push` manually.")
+            return 1
         pushed = run(["git", "push"])
-        log("Pushed." if pushed.returncode == 0 else "git push failed — see log.")
+        if pushed.returncode == 0:
+            log("Pushed.")
+        else:
+            log("git push failed even after rebase — see log.")
+            notify("Re-auth synced but push failed — run `git push` manually.")
+            return 1
     else:
         log("No data changes to commit.")
 
