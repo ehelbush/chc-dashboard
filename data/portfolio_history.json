@@ -71777,5 +71777,358 @@
       "COMPX": 25476.64
     },
     "chc_price": 2.850281
+  },
+  {
+    "date": "2026-06-26",
+    "total_value": 1318224.74,
+    "total_equity": 1318224.74,
+    "cash_balance": 638.36,
+    "net_flows": 0,
+    "day_gain": -32140.9,
+    "positions_count": 9,
+    "holdings": [
+      {
+        "symbol": "AVGO",
+        "market_value": 289825.88,
+        "weight": 0.2199,
+        "quantity": 794.0
+      },
+      {
+        "symbol": "LLY",
+        "market_value": 239207.76,
+        "weight": 0.1815,
+        "quantity": 198.0
+      },
+      {
+        "symbol": "ANET",
+        "market_value": 176984.8,
+        "weight": 0.1343,
+        "quantity": 1123.0
+      },
+      {
+        "symbol": "MU",
+        "market_value": 134747.27,
+        "weight": 0.1022,
+        "quantity": 119.0
+      },
+      {
+        "symbol": "GLW",
+        "market_value": 120030.15,
+        "weight": 0.0911,
+        "quantity": 543.0
+      },
+      {
+        "symbol": "FIX",
+        "market_value": 96010.92,
+        "weight": 0.0728,
+        "quantity": 51.7794
+      },
+      {
+        "symbol": "NVDA",
+        "market_value": 89141.39,
+        "weight": 0.0676,
+        "quantity": 463.0
+      },
+      {
+        "symbol": "TPR",
+        "market_value": 87600.0,
+        "weight": 0.0665,
+        "quantity": 600.0
+      },
+      {
+        "symbol": "GOOG",
+        "market_value": 84676.57,
+        "weight": 0.0642,
+        "quantity": 253.0
+      }
+    ],
+    "benchmark_prices": {
+      "SPY": 728.99,
+      "QQQ": 706.52
+    },
+    "chc_price": 2.78244
+  },
+  {
+    "date": "2026-06-29",
+    "total_value": 1366646.68,
+    "total_equity": 1366646.68,
+    "cash_balance": 638.36,
+    "net_flows": 0,
+    "day_gain": 48421.94,
+    "positions_count": 9,
+    "holdings": [
+      {
+        "symbol": "AVGO",
+        "market_value": 295725.3,
+        "weight": 0.2164,
+        "quantity": 794.0
+      },
+      {
+        "symbol": "LLY",
+        "market_value": 243526.14,
+        "weight": 0.1782,
+        "quantity": 198.0
+      },
+      {
+        "symbol": "ANET",
+        "market_value": 184284.3,
+        "weight": 0.1348,
+        "quantity": 1123.0
+      },
+      {
+        "symbol": "MU",
+        "market_value": 136288.32,
+        "weight": 0.0997,
+        "quantity": 119.0
+      },
+      {
+        "symbol": "GLW",
+        "market_value": 138839.67,
+        "weight": 0.1016,
+        "quantity": 543.0
+      },
+      {
+        "symbol": "FIX",
+        "market_value": 100902.0,
+        "weight": 0.0738,
+        "quantity": 51.7794
+      },
+      {
+        "symbol": "NVDA",
+        "market_value": 90271.11,
+        "weight": 0.0661,
+        "quantity": 463.0
+      },
+      {
+        "symbol": "TPR",
+        "market_value": 87936.0,
+        "weight": 0.0643,
+        "quantity": 600.0
+      },
+      {
+        "symbol": "GOOG",
+        "market_value": 88873.84,
+        "weight": 0.065,
+        "quantity": 253.0
+      }
+    ],
+    "benchmark_prices": {
+      "SPY": 741.0,
+      "QQQ": 724.08
+    },
+    "chc_price": 2.884647
+  },
+  {
+    "date": "2026-06-30",
+    "total_value": 1376741.22,
+    "total_equity": 1376741.22,
+    "cash_balance": 638.36,
+    "net_flows": 0,
+    "day_gain": 10094.54,
+    "positions_count": 9,
+    "holdings": [
+      {
+        "symbol": "AVGO",
+        "market_value": 299933.5,
+        "weight": 0.2179,
+        "quantity": 794.0
+      },
+      {
+        "symbol": "LLY",
+        "market_value": 237487.14,
+        "weight": 0.1725,
+        "quantity": 198.0
+      },
+      {
+        "symbol": "ANET",
+        "market_value": 190775.24,
+        "weight": 0.1386,
+        "quantity": 1123.0
+      },
+      {
+        "symbol": "MU",
+        "market_value": 137360.51,
+        "weight": 0.0998,
+        "quantity": 119.0
+      },
+      {
+        "symbol": "GLW",
+        "market_value": 138698.49,
+        "weight": 0.1007,
+        "quantity": 543.0
+      },
+      {
+        "symbol": "FIX",
+        "market_value": 102624.18,
+        "weight": 0.0745,
+        "quantity": 51.7794
+      },
+      {
+        "symbol": "NVDA",
+        "market_value": 92641.67,
+        "weight": 0.0673,
+        "quantity": 463.0
+      },
+      {
+        "symbol": "TPR",
+        "market_value": 87828.0,
+        "weight": 0.0638,
+        "quantity": 600.0
+      },
+      {
+        "symbol": "GOOG",
+        "market_value": 89392.49,
+        "weight": 0.0649,
+        "quantity": 253.0
+      }
+    ],
+    "benchmark_prices": {
+      "SPY": 746.77,
+      "QQQ": 736.4
+    },
+    "chc_price": 2.905954
+  },
+  {
+    "date": "2026-07-01",
+    "total_value": 1323974.21,
+    "total_equity": 1323974.21,
+    "cash_balance": 638.36,
+    "net_flows": 0,
+    "day_gain": -52767.01,
+    "positions_count": 9,
+    "holdings": [
+      {
+        "symbol": "AVGO",
+        "market_value": 293255.96,
+        "weight": 0.2215,
+        "quantity": 794.0
+      },
+      {
+        "symbol": "LLY",
+        "market_value": 235964.52,
+        "weight": 0.1782,
+        "quantity": 198.0
+      },
+      {
+        "symbol": "ANET",
+        "market_value": 187114.26,
+        "weight": 0.1413,
+        "quantity": 1123.0
+      },
+      {
+        "symbol": "MU",
+        "market_value": 122841.32,
+        "weight": 0.0928,
+        "quantity": 119.0
+      },
+      {
+        "symbol": "GLW",
+        "market_value": 119802.09,
+        "weight": 0.0905,
+        "quantity": 543.0
+      },
+      {
+        "symbol": "FIX",
+        "market_value": 96576.35,
+        "weight": 0.0729,
+        "quantity": 51.7794
+      },
+      {
+        "symbol": "NVDA",
+        "market_value": 91479.54,
+        "weight": 0.0691,
+        "quantity": 463.0
+      },
+      {
+        "symbol": "TPR",
+        "market_value": 86394.0,
+        "weight": 0.0653,
+        "quantity": 600.0
+      },
+      {
+        "symbol": "GOOG",
+        "market_value": 90546.17,
+        "weight": 0.0684,
+        "quantity": 253.0
+      }
+    ],
+    "benchmark_prices": {
+      "SPY": 745.76,
+      "QQQ": 725.17
+    },
+    "chc_price": 2.794576
+  },
+  {
+    "date": "2026-07-02",
+    "total_value": 1286415.83,
+    "total_equity": 1287838.08,
+    "cash_balance": 1422.25,
+    "net_flows": 0,
+    "day_gain": -35149.63,
+    "positions_count": 9,
+    "holdings": [
+      {
+        "symbol": "AVGO",
+        "market_value": 286070.26,
+        "weight": 0.2224,
+        "quantity": 794.0
+      },
+      {
+        "symbol": "LLY",
+        "market_value": 239394.87,
+        "weight": 0.1861,
+        "quantity": 198.0
+      },
+      {
+        "symbol": "ANET",
+        "market_value": 179399.25,
+        "weight": 0.1395,
+        "quantity": 1123.0
+      },
+      {
+        "symbol": "MU",
+        "market_value": 116717.58,
+        "weight": 0.0907,
+        "quantity": 119.0
+      },
+      {
+        "symbol": "GLW",
+        "market_value": 108073.29,
+        "weight": 0.084,
+        "quantity": 543.0
+      },
+      {
+        "symbol": "FIX",
+        "market_value": 90677.9,
+        "weight": 0.0705,
+        "quantity": 51.7794
+      },
+      {
+        "symbol": "NVDA",
+        "market_value": 89771.07,
+        "weight": 0.0698,
+        "quantity": 463.0
+      },
+      {
+        "symbol": "GOOG",
+        "market_value": 89149.61,
+        "weight": 0.0693,
+        "quantity": 253.0
+      },
+      {
+        "symbol": "TPR",
+        "market_value": 87162.0,
+        "weight": 0.0678,
+        "quantity": 600.0
+      }
+    ],
+    "benchmark_prices": {
+      "SPY": 745.76,
+      "QQQ": 725.17,
+      "IWM": 299.32,
+      "DIA": 522.4,
+      "COMPX": 26040.03
+    },
+    "chc_price": 2.7153
   }
 ]

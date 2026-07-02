@@ -1,6 +1,6 @@
 {
-  "synced_at": "2026-06-25T16:33:18.829518+00:00",
-  "status": "cached",
+  "synced_at": "2026-07-02T16:27:03.180623+00:00",
+  "status": "live",
   "accounts": [
     {
       "account_id": "***2965",
@@ -12,12 +12,12 @@
           "asset_type": "EQUITY",
           "quantity": 794.0,
           "avg_cost": 250.3929,
-          "market_value": 303855.86,
-          "current_price": 382.69,
-          "day_gain_pct": 0.16,
-          "total_gain": 105043.91,
-          "total_gain_pct": 0.5284,
-          "market_cap": 1819869525070.6228,
+          "market_value": 286070.26,
+          "current_price": 360.29,
+          "day_gain_pct": -2.45,
+          "total_gain": 87258.31,
+          "total_gain_pct": 0.4389,
+          "market_cap": 1715250382977.347,
           "sector": "Technology",
           "industry": "Semiconductors"
         },
@@ -27,12 +27,12 @@
           "asset_type": "EQUITY",
           "quantity": 198.0,
           "avg_cost": 1018.8064,
-          "market_value": 223892.46,
-          "current_price": 1130.77,
-          "day_gain_pct": 1.21,
-          "total_gain": 22168.79,
-          "total_gain_pct": 0.1099,
-          "market_cap": 1008354447079.4443,
+          "market_value": 239394.87,
+          "current_price": 1209.07,
+          "day_gain_pct": 1.45,
+          "total_gain": 37671.2,
+          "total_gain_pct": 0.1867,
+          "market_cap": 1078173270794.917,
           "sector": "Healthcare",
           "industry": "Drug Manufacturers - General"
         },
@@ -42,12 +42,12 @@
           "asset_type": "EQUITY",
           "quantity": 1123.0,
           "avg_cost": 90.6288,
-          "market_value": 188574.16,
-          "current_price": 167.92,
-          "day_gain_pct": 3.82,
-          "total_gain": 86797.99,
-          "total_gain_pct": 0.8528,
-          "market_cap": 211471220487.3424,
+          "market_value": 179399.25,
+          "current_price": 159.75,
+          "day_gain_pct": -4.12,
+          "total_gain": 77623.08,
+          "total_gain_pct": 0.7627,
+          "market_cap": 201152317720.5,
           "sector": "Technology",
           "industry": "Computer Hardware"
         },
@@ -57,12 +57,12 @@
           "asset_type": "EQUITY",
           "quantity": 119.0,
           "avg_cost": 669.48,
-          "market_value": 143987.62,
-          "current_price": 1209.98,
-          "day_gain_pct": 15.4,
-          "total_gain": 64319.5,
-          "total_gain_pct": 0.8073,
-          "market_cap": 1364507404119.0796,
+          "market_value": 116717.58,
+          "current_price": 980.82,
+          "day_gain_pct": -4.99,
+          "total_gain": 37049.46,
+          "total_gain_pct": 0.465,
+          "market_cap": 1109024575852.0974,
           "sector": "Technology",
           "industry": "Semiconductors"
         },
@@ -72,12 +72,12 @@
           "asset_type": "EQUITY",
           "quantity": 543.0,
           "avg_cost": 170.9913,
-          "market_value": 122240.21,
-          "current_price": 225.12,
-          "day_gain_pct": 9.37,
-          "total_gain": 29391.91,
-          "total_gain_pct": 0.3166,
-          "market_cap": 193781215828.74985,
+          "market_value": 108073.29,
+          "current_price": 199.03,
+          "day_gain_pct": -9.79,
+          "total_gain": 15224.99,
+          "total_gain_pct": 0.164,
+          "market_cap": 171284143608.5415,
           "sector": "Technology",
           "industry": "Electronic Components"
         },
@@ -87,12 +87,12 @@
           "asset_type": "EQUITY",
           "quantity": 51.7794,
           "avg_cost": 1807.07,
-          "market_value": 103753.23,
-          "current_price": 2003.75,
-          "day_gain_pct": 2.52,
-          "total_gain": 10184.23,
-          "total_gain_pct": 0.1088,
-          "market_cap": 70500049967.88171,
+          "market_value": 90677.9,
+          "current_price": 1751.24,
+          "day_gain_pct": -6.11,
+          "total_gain": -2891.1,
+          "total_gain_pct": -0.0309,
+          "market_cap": 61647236454.77014,
           "sector": "Industrials",
           "industry": "Engineering & Construction"
         },
@@ -102,29 +102,14 @@
           "asset_type": "EQUITY",
           "quantity": 463.0,
           "avg_cost": 142.6598,
-          "market_value": 90479.46,
-          "current_price": 195.42,
-          "day_gain_pct": -1.8,
-          "total_gain": 24427.99,
-          "total_gain_pct": 0.3698,
-          "market_cap": 4732783252166.748,
+          "market_value": 89771.07,
+          "current_price": 193.89,
+          "day_gain_pct": -1.87,
+          "total_gain": 23719.6,
+          "total_gain_pct": 0.3591,
+          "market_cap": 4697057498916.626,
           "sector": "Technology",
           "industry": "Semiconductors"
-        },
-        {
-          "symbol": "TPR",
-          "name": "TPR",
-          "asset_type": "EQUITY",
-          "quantity": 600.0,
-          "avg_cost": 86.9026,
-          "market_value": 87498.0,
-          "current_price": 145.83,
-          "day_gain_pct": -2.62,
-          "total_gain": 35356.41,
-          "total_gain_pct": 0.6781,
-          "market_cap": 29464181012.57492,
-          "sector": "Consumer Cyclical",
-          "industry": "Luxury Goods"
         },
         {
           "symbol": "GOOG",
@@ -132,24 +117,39 @@
           "asset_type": "EQUITY",
           "quantity": 253.0,
           "avg_cost": 322.1402,
-          "market_value": 86084.64,
-          "current_price": 340.26,
-          "day_gain_pct": -1.39,
-          "total_gain": 4583.17,
-          "total_gain_pct": 0.0562,
-          "market_cap": 4151071237648.9053,
+          "market_value": 89149.61,
+          "current_price": 352.37,
+          "day_gain_pct": -1.54,
+          "total_gain": 7648.14,
+          "total_gain_pct": 0.0938,
+          "market_cap": 4299820633882.8535,
           "sector": "Communication Services",
           "industry": "Internet Content & Information"
+        },
+        {
+          "symbol": "TPR",
+          "name": "TPR",
+          "asset_type": "EQUITY",
+          "quantity": 600.0,
+          "avg_cost": 86.9026,
+          "market_value": 87162.0,
+          "current_price": 145.27,
+          "day_gain_pct": 0.89,
+          "total_gain": 35020.41,
+          "total_gain_pct": 0.6716,
+          "market_cap": 29351036466.00815,
+          "sector": "Consumer Cyclical",
+          "industry": "Luxury Goods"
         }
       ],
-      "total_value": 1350365.64,
-      "cash_balance": 638.36,
-      "total_equity": 1351004.0,
-      "day_gain": 41523.73,
+      "total_value": 1286415.83,
+      "cash_balance": 1422.25,
+      "total_equity": 1287838.08,
+      "day_gain": -35149.63,
       "sectors": {
         "sectors": {
           "EQUITY": {
-            "value": 1350365.64,
+            "value": 1286415.83,
             "weight": 1.0,
             "positions": [
               "MU",
@@ -164,7 +164,7 @@
             ]
           }
         },
-        "total_value": 1350365.64
+        "total_value": 1286415.83
       },
       "positions_count": 9,
       "recent_trades": [
@@ -246,182 +246,182 @@
   "benchmarks": {
     "SPY": {
       "symbol": "SPY",
-      "current_price": 733.24,
-      "one_yr_return": 0.2218,
-      "ytd_return": 0.0733,
-      "annualized_return": 0.1157,
+      "current_price": 745.76,
+      "one_yr_return": 0.207,
+      "ytd_return": 0.0916,
+      "annualized_return": 0.1167,
       "max_drawdown": -0.2536,
       "data_points": 1255
     },
     "QQQ": {
       "symbol": "QQQ",
-      "current_price": 710.62,
-      "one_yr_return": 0.3366,
-      "ytd_return": 0.159,
-      "annualized_return": 0.1529,
+      "current_price": 725.17,
+      "one_yr_return": 0.3146,
+      "ytd_return": 0.1828,
+      "annualized_return": 0.1545,
       "max_drawdown": -0.3562,
       "data_points": 1255
     },
     "IWM": {
       "symbol": "IWM",
-      "current_price": 296.69,
-      "one_yr_return": 0.401,
-      "ytd_return": 0.1926,
-      "annualized_return": 0.0507,
+      "current_price": 299.32,
+      "one_yr_return": 0.3871,
+      "ytd_return": 0.2032,
+      "annualized_return": 0.053,
       "max_drawdown": -0.3313,
       "data_points": 1255
     },
     "DIA": {
       "symbol": "DIA",
-      "current_price": 518.52,
-      "one_yr_return": 0.218,
-      "ytd_return": 0.0721,
-      "annualized_return": 0.0872,
+      "current_price": 522.4,
+      "one_yr_return": 0.1855,
+      "ytd_return": 0.0802,
+      "annualized_return": 0.086,
       "max_drawdown": -0.219,
       "data_points": 1255
     },
     "COMPX": {
       "symbol": "COMPX",
-      "current_price": 25476.64,
-      "one_yr_return": 0.2978,
-      "ytd_return": 0.0964,
-      "annualized_return": 0.1219,
+      "current_price": 26040.03,
+      "one_yr_return": 0.2784,
+      "ytd_return": 0.1207,
+      "annualized_return": 0.1244,
       "max_drawdown": -0.364,
       "data_points": 1255
     }
   },
   "portfolio_summary": {
-    "total_value": 1350365.64,
-    "total_cash": 638.36,
-    "total_equity": 1351004.0,
+    "total_value": 1286415.83,
+    "total_cash": 1422.25,
+    "total_equity": 1287838.08,
     "positions_count": 9,
     "accounts_count": 1,
     "top_holdings": [
       {
         "symbol": "AVGO",
-        "weight": 0.225,
-        "value": 303855.86
+        "weight": 0.2224,
+        "value": 286070.26
       },
       {
         "symbol": "LLY",
-        "weight": 0.1658,
-        "value": 223892.46
+        "weight": 0.1861,
+        "value": 239394.87
       },
       {
         "symbol": "ANET",
-        "weight": 0.1396,
-        "value": 188574.16
+        "weight": 0.1395,
+        "value": 179399.25
       },
       {
         "symbol": "MU",
-        "weight": 0.1066,
-        "value": 143987.62
+        "weight": 0.0907,
+        "value": 116717.58
       },
       {
         "symbol": "GLW",
-        "weight": 0.0905,
-        "value": 122240.21
+        "weight": 0.084,
+        "value": 108073.29
       },
       {
         "symbol": "FIX",
-        "weight": 0.0768,
-        "value": 103753.23
+        "weight": 0.0705,
+        "value": 90677.9
       },
       {
         "symbol": "NVDA",
-        "weight": 0.067,
-        "value": 90479.46
-      },
-      {
-        "symbol": "TPR",
-        "weight": 0.0648,
-        "value": 87498.0
+        "weight": 0.0698,
+        "value": 89771.07
       },
       {
         "symbol": "GOOG",
-        "weight": 0.0637,
-        "value": 86084.64
+        "weight": 0.0693,
+        "value": 89149.61
+      },
+      {
+        "symbol": "TPR",
+        "weight": 0.0678,
+        "value": 87162.0
       }
     ]
   },
   "quotes": {
-    "GOOG": {
-      "last_price": 340.225,
-      "change": -4.815,
+    "TPR": {
+      "last_price": 145.27,
+      "change": 1.28,
       "change_pct": 0,
-      "volume": 9263088,
+      "volume": 879838,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "GOOG": {
+      "last_price": 352.37,
+      "change": -5.52,
+      "change_pct": 0,
+      "volume": 7186190,
       "52w_high": 0,
       "52w_low": 0
     },
     "ANET": {
-      "last_price": 167.92,
-      "change": 6.18,
+      "last_price": 159.75,
+      "change": -6.87,
       "change_pct": 0,
-      "volume": 3329553,
+      "volume": 3345563,
       "52w_high": 0,
       "52w_low": 0
     },
     "NVDA": {
-      "last_price": 195.435,
-      "change": -3.565,
+      "last_price": 193.87,
+      "change": -3.71,
       "change_pct": 0,
-      "volume": 76571428,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "MU": {
-      "last_price": 1210.37,
-      "change": 161.86,
-      "change_pct": 0,
-      "volume": 50571490,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "FIX": {
-      "last_price": 2003.755,
-      "change": 49.285,
-      "change_pct": 0,
-      "volume": 192452,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "AVGO": {
-      "last_price": 382.7,
-      "change": 0.63,
-      "change_pct": 0,
-      "volume": 10089805,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "TPR": {
-      "last_price": 145.83,
-      "change": -3.92,
-      "change_pct": 0,
-      "volume": 700882,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "GLW": {
-      "last_price": 225.1201,
-      "change": 19.2901,
-      "change_pct": 0,
-      "volume": 16861397,
+      "volume": 60668119,
       "52w_high": 0,
       "52w_low": 0
     },
     "LLY": {
-      "last_price": 1130.77,
-      "change": 13.51,
+      "last_price": 1209.065,
+      "change": 17.325,
       "change_pct": 0,
-      "volume": 1057716,
+      "volume": 1136874,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "FIX": {
+      "last_price": 1750.64,
+      "change": -114.51,
+      "change_pct": 0,
+      "volume": 254605,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "AVGO": {
+      "last_price": 360.1912,
+      "change": -9.1488,
+      "change_pct": 0,
+      "volume": 9523901,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "GLW": {
+      "last_price": 199.0599,
+      "change": -21.5701,
+      "change_pct": 0,
+      "volume": 11701542,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "MU": {
+      "last_price": 981.105,
+      "change": -51.175,
+      "change_pct": 0,
+      "volume": 32483578,
       "52w_high": 0,
       "52w_low": 0
     }
   },
   "auth_status": {
-    "connected": false,
-    "refresh_days_remaining": 0,
-    "needs_reauth": true,
-    "last_sync": "2026-06-25T16:33:18.829518+00:00"
+    "connected": true,
+    "refresh_days_remaining": 7.0,
+    "needs_reauth": false,
+    "last_sync": "2026-07-02T16:27:03.180623+00:00"
   }
 }
