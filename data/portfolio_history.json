@@ -72060,65 +72060,65 @@
   },
   {
     "date": "2026-07-02",
-    "total_value": 1286415.83,
-    "total_equity": 1287838.08,
+    "total_value": 1283572.21,
+    "total_equity": 1284994.46,
     "cash_balance": 1422.25,
     "net_flows": 0,
-    "day_gain": -35149.63,
+    "day_gain": -37838.73,
     "positions_count": 9,
     "holdings": [
       {
         "symbol": "AVGO",
-        "market_value": 286070.26,
-        "weight": 0.2224,
+        "market_value": 285784.42,
+        "weight": 0.2226,
         "quantity": 794.0
       },
       {
         "symbol": "LLY",
-        "market_value": 239394.87,
-        "weight": 0.1861,
+        "market_value": 239111.24,
+        "weight": 0.1863,
         "quantity": 198.0
       },
       {
         "symbol": "ANET",
-        "market_value": 179399.25,
-        "weight": 0.1395,
+        "market_value": 178646.84,
+        "weight": 0.1392,
         "quantity": 1123.0
       },
       {
         "symbol": "MU",
-        "market_value": 116717.58,
-        "weight": 0.0907,
+        "market_value": 116302.27,
+        "weight": 0.0906,
         "quantity": 119.0
       },
       {
         "symbol": "GLW",
-        "market_value": 108073.29,
-        "weight": 0.084,
+        "market_value": 108171.03,
+        "weight": 0.0843,
         "quantity": 543.0
       },
       {
         "symbol": "FIX",
-        "market_value": 90677.9,
-        "weight": 0.0705,
+        "market_value": 90042.31,
+        "weight": 0.0701,
         "quantity": 51.7794
       },
       {
         "symbol": "NVDA",
-        "market_value": 89771.07,
-        "weight": 0.0698,
+        "market_value": 89784.96,
+        "weight": 0.0699,
         "quantity": 463.0
       },
       {
         "symbol": "GOOG",
-        "market_value": 89149.61,
-        "weight": 0.0693,
+        "market_value": 89152.14,
+        "weight": 0.0695,
         "quantity": 253.0
       },
       {
         "symbol": "TPR",
-        "market_value": 87162.0,
-        "weight": 0.0678,
+        "market_value": 86577.0,
+        "weight": 0.0675,
         "quantity": 600.0
       }
     ],
@@ -72129,6 +72129,6 @@
       "DIA": 522.4,
       "COMPX": 26040.03
     },
-    "chc_price": 2.7153
+    "chc_price": 2.709298
   }
 ]

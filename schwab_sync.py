@@ -95,6 +95,17 @@ def refresh_access_token(tokens, app_key, app_secret):
         with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
             new_tokens = json.loads(resp.read().decode())
             if "access_token" in new_tokens:
+                # Keep the ORIGINAL refresh token instead of persisting the
+                # rotated one Schwab returns. Schwab's refresh token is valid the
+                # full 7 days and is reusable for every access-token refresh, so
+                # the reference model (Stock-Updater/schwab_account.py) never
+                # saves the rotation — it reuses the login token read-only until
+                # expiry. Persisting the rotation is what desynced our two token
+                # stores (local file + CI secret) and produced the mid-week 401s:
+                # each side rotated its own copy, they drifted, Schwab 401'd the
+                # stale one. With the refresh token immutable except at re-auth,
+                # both stores always hold the same token — no drift, no lockout.
+                new_tokens["refresh_token"] = tokens["refresh_token"]
                 new_tokens["refresh_expires_at"] = tokens.get("refresh_expires_at", 0)
                 new_tokens["expires_at"] = now + new_tokens.get("expires_in", 1800)
                 save_tokens(new_tokens)
