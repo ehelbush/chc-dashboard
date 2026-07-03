@@ -59,7 +59,10 @@ def save_tokens(tokens):
     tokens["saved_at"] = datetime.now(timezone.utc).isoformat()
     tokens["expires_at"] = datetime.now(timezone.utc).timestamp() + tokens.get("expires_in", 1800)
     tokens["refresh_expires_at"] = datetime.now(timezone.utc).timestamp() + 7 * 24 * 3600  # 7 days
-    TOKEN_FILE.write_text(json.dumps(tokens, indent=2))
+    # SINGLE-LINE JSON on purpose: this file becomes the SCHWAB_TOKENS secret,
+    # and multi-line secrets get corrupted round-tripping through CI's
+    # `echo "$SCHWAB_TOKENS" > file` for some token values. Do NOT add indent=.
+    TOKEN_FILE.write_text(json.dumps(tokens, separators=(",", ":")))
     print(f"\n  Tokens saved to {TOKEN_FILE}")
     print(f"  Access token expires in {tokens.get('expires_in', 1800) // 60} minutes")
     print(f"  Refresh token expires in 7 days")

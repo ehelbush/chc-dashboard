@@ -60,7 +60,14 @@ def load_tokens():
 
 def save_tokens(tokens):
     tokens["saved_at"] = datetime.now(timezone.utc).isoformat()
-    TOKEN_FILE.write_text(json.dumps(tokens, indent=2))
+    # Write SINGLE-LINE JSON. This file is pushed verbatim into the
+    # SCHWAB_TOKENS GitHub secret, and CI reconstructs it with
+    # `echo "$SCHWAB_TOKENS" > schwab_tokens.json`. Multi-line secrets get
+    # mangled in that round-trip for some token values (tokens are random
+    # base64, so corruption was intermittent) — which caused CI to 401 and the
+    # dashboard to flip to needs_reauth even though the token was fine. Keep it
+    # one line so the secret round-trips cleanly. Do NOT reintroduce indent=.
+    TOKEN_FILE.write_text(json.dumps(tokens, separators=(",", ":")))
 
 
 def refresh_access_token(tokens, app_key, app_secret):
@@ -857,15 +864,31 @@ def main():
     if not success:
         cache = load_cache()
         if cache.get("synced_at"):
-            print(f"\n  Using cached data from {cache['synced_at']}")
-            cache["status"] = "cached"
-            cache["auth_status"] = {
-                "connected": False,
-                "refresh_days_remaining": 0,
-                "needs_reauth": True,
-                "last_sync": cache["synced_at"],
-            }
-            save_cache(cache)
+            # Only degrade the cache to "needs reauth" when the refresh token is
+            # GENUINELY expired. A sync can also fail transiently (Schwab hiccup)
+            # or because the CI secret's token has desynced from a valid one —
+            # in those cases the refresh token still has days left and the last
+            # cache is fine. Flipping to needs_reauth there (and letting CI
+            # commit it) is exactly what turned every token blip into a visible
+            # "dashboard down". When the token isn't actually expired, leave the
+            # last-good cache untouched so the dashboard keeps serving real data.
+            tokens = load_tokens() or {}
+            days_left = (tokens.get("refresh_expires_at", 0)
+                         - datetime.now(timezone.utc).timestamp()) / 86400
+            if days_left <= 0:
+                print(f"\n  Refresh token expired — flagging needs_reauth.")
+                cache["status"] = "cached"
+                cache["auth_status"] = {
+                    "connected": False,
+                    "refresh_days_remaining": 0,
+                    "needs_reauth": True,
+                    "last_sync": cache["synced_at"],
+                }
+                save_cache(cache)
+            else:
+                print(f"\n  Sync failed but refresh token still valid "
+                      f"({days_left:.1f}d left) — preserving last-good cache "
+                      f"unchanged (likely transient or a token desync, not expiry).")
         else:
             print("\n  No cached data available. Authenticate first:")
             print("  python3 schwab_auth.py")
