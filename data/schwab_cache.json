@@ -1,6 +1,6 @@
 {
-  "synced_at": "2026-07-03T17:45:25.360206+00:00",
-  "status": "cached",
+  "synced_at": "2026-07-03T17:50:24.803512+00:00",
+  "status": "live",
   "accounts": [
     {
       "account_id": "***2965",
@@ -345,54 +345,6 @@
     ]
   },
   "quotes": {
-    "MU": {
-      "last_price": 977.0,
-      "change": 1.44,
-      "change_pct": 0,
-      "volume": 61844373,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "TPR": {
-      "last_price": 143.7501,
-      "change": -0.4599,
-      "change_pct": 0,
-      "volume": 2705758,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "LLY": {
-      "last_price": 1212.44,
-      "change": -1.47,
-      "change_pct": 0,
-      "volume": 3297441,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "GLW": {
-      "last_price": 198.18,
-      "change": 1.39,
-      "change_pct": 0,
-      "volume": 21192219,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "FIX": {
-      "last_price": 1746.7328,
-      "change": 5.4328,
-      "change_pct": 0,
-      "volume": 645023,
-      "52w_high": 0,
-      "52w_low": 0
-    },
-    "GOOG": {
-      "last_price": 355.1119,
-      "change": -1.0681,
-      "change_pct": 0,
-      "volume": 15553221,
-      "52w_high": 0,
-      "52w_low": 0
-    },
     "ANET": {
       "last_price": 160.4289,
       "change": 0.4389,
@@ -409,6 +361,54 @@
       "52w_high": 0,
       "52w_low": 0
     },
+    "GOOG": {
+      "last_price": 355.1119,
+      "change": -1.0681,
+      "change_pct": 0,
+      "volume": 15553221,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "MU": {
+      "last_price": 977.0,
+      "change": 1.44,
+      "change_pct": 0,
+      "volume": 61844373,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "TPR": {
+      "last_price": 143.7501,
+      "change": -0.4599,
+      "change_pct": 0,
+      "volume": 2705758,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "FIX": {
+      "last_price": 1746.7328,
+      "change": 5.4328,
+      "change_pct": 0,
+      "volume": 645023,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "GLW": {
+      "last_price": 198.18,
+      "change": 1.39,
+      "change_pct": 0,
+      "volume": 21192219,
+      "52w_high": 0,
+      "52w_low": 0
+    },
+    "LLY": {
+      "last_price": 1212.44,
+      "change": -1.47,
+      "change_pct": 0,
+      "volume": 3297441,
+      "52w_high": 0,
+      "52w_low": 0
+    },
     "AVGO": {
       "last_price": 361.75,
       "change": 1.3,
@@ -419,9 +419,9 @@
     }
   },
   "auth_status": {
-    "connected": false,
-    "refresh_days_remaining": 0,
-    "needs_reauth": true,
-    "last_sync": "2026-07-03T17:45:25.360206+00:00"
+    "connected": true,
+    "refresh_days_remaining": 5.9,
+    "needs_reauth": false,
+    "last_sync": "2026-07-03T17:50:24.803512+00:00"
   }
 }
