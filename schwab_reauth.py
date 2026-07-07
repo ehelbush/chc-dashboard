@@ -30,7 +30,11 @@ TOKEN_FILE = PROJECT_DIR / "schwab_tokens.json"
 LOG_FILE = PROJECT_DIR / "logs" / "schwab_reauth.log"
 
 REAUTH_THRESHOLD_DAYS = 3      # re-auth when the refresh token has <= this many days left
-AUTH_TIMEOUT_SECONDS = 600     # hard cap so a missed login can't hang launchd
+AUTH_TIMEOUT_SECONDS = 1800    # 30 min window to finish the browser login before
+                               # the helper is killed. Too short (was 600s/10min)
+                               # meant a login not finished promptly left the
+                               # callback server dead, so the redirect hit a dead
+                               # port and the browser showed "Unable to connect".
 
 
 def log(msg):

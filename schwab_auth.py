@@ -272,7 +272,9 @@ def run_auth_flow(app_key, app_secret, callback_url):
     print(f"  Waiting for authorization callback on port {port}...")
     print(f"  (Log into Schwab and click 'Allow')\n")
 
-    # Wait for callback (timeout after 5 minutes)
+    # Wait for the callback. handle_request() re-arms after each idle interval,
+    # so run directly this waits indefinitely; under schwab_reauth.py the wrapper
+    # enforces AUTH_TIMEOUT_SECONDS as the real cap.
     server.timeout = 300
     while CallbackHandler.auth_code is None:
         server.handle_request()
