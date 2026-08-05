@@ -28,6 +28,7 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent
 TOKEN_FILE = PROJECT_DIR / "schwab_tokens.json"
 LOG_FILE = PROJECT_DIR / "logs" / "schwab_reauth.log"
+STATE_FILE = PROJECT_DIR / "logs" / "reauth_state.json"
 
 REAUTH_THRESHOLD_DAYS = 3      # re-auth when the refresh token has <= this many days left
 AUTH_TIMEOUT_SECONDS = 1800    # 30 min window to finish the browser login before
@@ -35,6 +36,8 @@ AUTH_TIMEOUT_SECONDS = 1800    # 30 min window to finish the browser login befor
                                # meant a login not finished promptly left the
                                # callback server dead, so the redirect hit a dead
                                # port and the browser showed "Unable to connect".
+ESCALATE_AFTER_FAILURES = 2    # consecutive misses before a transient banner is
+                               # upgraded to a modal that must be dismissed.
 
 
 def log(msg):
@@ -45,12 +48,95 @@ def log(msg):
         f.write(line + "\n")
 
 
+def _as_quote(text):
+    """Escape a Python string for embedding in an AppleScript string literal."""
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def notify(text):
     subprocess.run(
         ["osascript", "-e",
-         f'display notification "{text}" with title "CHC Dashboard re-auth"'],
+         f'display notification "{_as_quote(text)}" with title "CHC Dashboard re-auth"'
+         ' sound name "Basso"'],
         capture_output=True,
     )
+
+
+def alert(text):
+    """Modal dialog that stays up until dismissed.
+
+    `display notification` is a banner that self-dismisses in a few seconds. In
+    July 2026 the 8am job timed out 13 mornings running, fired 13 banners nobody
+    was at the keyboard to see, and the token silently expired — the dashboard
+    served three-week-old data until someone happened to check. Anything meant to
+    survive an unattended morning has to persist on screen, so escalation uses an
+    alert rather than another banner.
+
+    Launched detached: `giving up after` keeps it from hanging forever, but we
+    still must not block the launchd job for the full window.
+    """
+    script = (
+        'tell application "System Events" to display alert '
+        '"CHC Dashboard: Schwab re-auth needed" '
+        f'message "{_as_quote(text)}" as critical giving up after 3600'
+    )
+    try:
+        subprocess.Popen(["osascript", "-e", script],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception as e:
+        log(f"Could not raise modal alert: {e}")
+
+
+def _read_state():
+    try:
+        return json.loads(STATE_FILE.read_text())
+    except Exception:
+        return {}
+
+
+def record_failure(reason):
+    """Bump the consecutive-miss counter; return the new count."""
+    n = _read_state().get("consecutive_failures", 0) + 1
+    STATE_FILE.parent.mkdir(exist_ok=True)
+    STATE_FILE.write_text(json.dumps({
+        "consecutive_failures": n,
+        "last_failure": datetime.now().isoformat(timespec="seconds"),
+        "last_reason": reason,
+    }, indent=2))
+    return n
+
+
+def clear_failures():
+    STATE_FILE.parent.mkdir(exist_ok=True)
+    STATE_FILE.write_text(json.dumps({
+        "consecutive_failures": 0,
+        "last_success": datetime.now().isoformat(timespec="seconds"),
+    }, indent=2))
+
+
+def fail(reason, banner, remaining=None):
+    """Log + notify a failed run, escalating to a modal when it's not a one-off.
+
+    Escalates on the 2nd consecutive miss, or immediately once the refresh token
+    is actually expired — at that point the dashboard is already serving stale
+    data, so it is not a warning about the future.
+    """
+    log(reason)
+    n = record_failure(reason)
+    expired = remaining is not None and remaining <= 0
+    if expired or n >= ESCALATE_AFTER_FAILURES:
+        if expired:
+            detail = (f"The Schwab refresh token EXPIRED {abs(remaining):.0f} day(s) ago. "
+                      "The dashboard is serving stale data right now.")
+        else:
+            detail = f"{n} consecutive re-auth attempts have failed."
+        alert(f"{detail}\n\n{reason}\n\n"
+              "Fix: run `python3 schwab_reauth.py` in the repo and complete the "
+              "Schwab login (credentials + MFA, then Allow).")
+        log(f"Escalated to modal alert (consecutive_failures={n}, expired={expired}).")
+    else:
+        notify(banner)
+    return 1
 
 
 def refresh_days_left():
@@ -71,6 +157,7 @@ def main():
     log(f"refresh token remaining={remaining:.2f} days (threshold={REAUTH_THRESHOLD_DAYS})")
     if remaining > REAUTH_THRESHOLD_DAYS:
         log("Token still fresh; nothing to do.")
+        clear_failures()
         return 0
 
     notify("Opening Schwab login to refresh the 7-day token.")
@@ -78,19 +165,24 @@ def main():
     try:
         r = run([sys.executable, "schwab_auth.py"], timeout=AUTH_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        log(f"Re-auth timed out (no login within {AUTH_TIMEOUT_SECONDS}s). Will retry next run.")
-        notify("Re-auth timed out — no login. Will retry next run.")
-        return 1
+        return fail(
+            f"Re-auth timed out (no login within {AUTH_TIMEOUT_SECONDS}s). Will retry next run.",
+            "Re-auth timed out — no login. Will retry next run.",
+            remaining,
+        )
     if r.returncode != 0:
-        log("schwab_auth.py exited non-zero. Aborting.")
-        notify("Re-auth failed — see log.")
-        return 1
+        return fail("schwab_auth.py exited non-zero. Aborting.",
+                    "Re-auth failed — see log.", remaining)
 
     # Guard: confirm we actually got a fresh token before doing anything else.
     if refresh_days_left() <= 5:
-        log("Token does not look refreshed after auth; aborting before sync/push.")
-        notify("Re-auth did not produce a fresh token — aborting.")
-        return 1
+        return fail("Token does not look refreshed after auth; aborting before sync/push.",
+                    "Re-auth did not produce a fresh token — aborting.", remaining)
+
+    # Auth itself succeeded, so the miss streak is broken. Later sync/push
+    # problems are a different failure and raise their own notification; they
+    # must not keep the "re-auth needed" counter climbing.
+    clear_failures()
 
     log("Re-auth OK. Syncing account + backfilling history...")
     run([sys.executable, "schwab_sync.py"])
