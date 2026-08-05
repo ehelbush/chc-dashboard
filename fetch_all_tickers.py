@@ -156,6 +156,14 @@ def compute_chc_model(dates, closes, volumes, eval_years=5,
     trading = calc_metrics(bal, si)
     call_strength = round(float(comb[N-1]), 6) if N > 0 else 0
     buy_signal = signals[N-1] if N > 0 else "Hold"
+
+    # Signal percentile — rank of today's signal within the eval period's
+    # distribution. Raw values aren't comparable across tickers; percentiles are.
+    comb_eval = comb[si:N]
+    signal_percentile = (
+        int(round(100.0 * float(np.sum(comb_eval <= comb[N-1])) / len(comb_eval)))
+        if len(comb_eval) > 0 else 50
+    )
     est_next_yr = round((trading.get("last_yr_return", 0) + trading.get("avg_yr_return", 0)) / 2, 6)
 
     # Sanitize NaN/Infinity (not valid in JSON)
@@ -168,6 +176,7 @@ def compute_chc_model(dates, closes, volumes, eval_years=5,
         "ticker": None,  # set by caller
         "buy_sell_call": buy_signal,
         "call_strength": safe(call_strength),
+        "signal_percentile": safe(signal_percentile),
         "last_yr_return": safe(trading.get("last_yr_return", 0)),
         "av_yrly_return": safe(trading.get("avg_yr_return", 0)),
         "est_next_yr_return": safe(est_next_yr),

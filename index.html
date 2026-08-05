@@ -175,7 +175,8 @@ const PORTFOLIO = {
 
 const DEFINITIONS = [
   ["Signal (Buy/Sell)", "The model's current recommendation. Buy means the combined timing signal is above the buy threshold; Sell means it's below the sell threshold. Hold (carry previous signal) when between thresholds."],
-  ["Call Strength", "The raw value of the combined timing signal. Positive values lean toward Buy, negative toward Sell. Magnitude indicates conviction; values near zero are weak signals."],
+  ["Call Strength", "The raw value of the combined timing signal. Positive values lean toward Buy, negative toward Sell. IMPORTANT: the raw value has no fixed scale and is NOT comparable across tickers. Each ticker's Vol/Price Mix sets its natural range: volume-heavy mixes produce signals up to about 1.0, price-heavy mixes rarely exceed 0.02. Compare it only to that ticker's own buy/sell thresholds, or use the Signal Percentile instead."],
+  ["Signal Percentile (Strength)", "Where today's signal falls within the ticker's own signal history over the evaluation period. P0 = the most bearish reading of the period, P50 = median, P100 = most bullish. Unlike the raw Call Strength, percentiles are comparable across tickers. The strength word (Strong / Moderate / Weak) measures how deep past the buy or sell threshold the signal sits, in percentile terms: 30+ points past = Strong, 12+ = Moderate, less = Weak."],
   ["Vol/Price Mix", "The blend weight between volume ratio and price slope in the combined signal. 0 = 100% price, 1 = 100% volume. Each asset has its own optimized mix (e.g., AVGO uses 0.15, TPR uses 0.98)."],
   ["Vol Flag", "Controls the moving average window for the volume ratio calculation. 0 = 1-day (raw), 1 = 50-day, 2 = 100-day, 3 = 120-day. Longer windows smooth out noise but react slower."],
   ["Price Flag", "Controls the moving average window for the price slope calculation. Same scale as Vol Flag: 0 = 1-day, 1 = 50-day, 2 = 100-day, 3 = 120-day."],
@@ -340,6 +341,22 @@ function computeCHCModel(dates, closes, volumes, opts) {
   const trading = calcMetrics(bal, si);
   const buyHold = calcMetrics(bhBal, si);
   const callStrength = comb[N-1] || 0;
+
+  // Signal percentile — where a value ranks within the eval period's signal
+  // distribution (comb[si..N-1]). Raw signal values are not comparable across
+  // tickers (each mix sets a different natural scale); percentiles are.
+  const combSorted = [];
+  for (let i = si; i < N; i++) combSorted.push(comb[i]);
+  combSorted.sort((a, b) => a - b);
+  const pctRank = v => {
+    if (combSorted.length === 0) return 50;
+    let lo = 0, hi = combSorted.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (combSorted[m] <= v) lo = m + 1; else hi = m; }
+    return Math.round(100 * lo / combSorted.length);
+  };
+  const signalPercentile = pctRank(callStrength);
+  const buyThresholdPct = pctRank(buyThreshold);
+  const sellThresholdPct = pctRank(sellThreshold);
   const buySignal = signals[N-1] || "Hold";
   const estNextYr = trading.last_yr_return != null ? (trading.last_yr_return + trading.avg_yr_return) / 2 : 0;
 
@@ -408,6 +425,8 @@ function computeCHCModel(dates, closes, volumes, opts) {
 
   return {
     buy_sell_call: buySignal, call_strength: +callStrength.toFixed(6),
+    signal_percentile: signalPercentile,
+    buy_threshold_pct: buyThresholdPct, sell_threshold_pct: sellThresholdPct,
     est_next_yr_return: +estNextYr.toFixed(6),
     eval_period_start: dt[si] || "", eval_period_end: dt[N-1] || "",
     eval_years: evalYears, trading, buy_hold: buyHold,
@@ -642,7 +661,21 @@ function PortfolioMetrics({portfolio:p2}) {
   );
 }
 
-function StrengthBar({value}) {
+function StrengthBar({value, percentile, call}) {
+  // Percentile mode: position within the ticker's own 5-yr signal range
+  // (comparable across tickers). Falls back to the raw value when the data
+  // source doesn't provide signal_percentile yet.
+  if (percentile != null) {
+    const p = Math.max(0, Math.min(100, percentile));
+    const co = call === "Sell" ? "var(--red)" : "var(--green)";
+    const lf = Math.min(50, p) + "%", wd = Math.abs(p - 50) + "%";
+    return (
+      <div className="sb" title={"Signal at the " + p + "th percentile of this ticker's own 5-yr signal range (0 = most bearish reading, 100 = most bullish)"}>
+        <div className="st"><div style={{position:"absolute",left:"50%",top:0,width:1,height:"100%",background:"var(--text2)",opacity:0.3}}/><div className="sf" style={{left:lf,width:wd,background:co}}/></div>
+        <span style={{fontSize:12,color:co,fontWeight:600,minWidth:40,textAlign:"right"}}>P{p}</span>
+      </div>
+    );
+  }
   const av=Math.min(Math.abs(value),1), ip=value>=0, co=ip?"var(--green)":"var(--red)";
   const lf=ip?"50%":(50-av*50)+"%", wd=(av*50)+"%";
   return (
@@ -671,7 +704,7 @@ function exportCSV(rows, columns, filename) {
 const COL_TIPS = {
   ticker:"Ticker symbol",
   buy_sell_call:"Model signal: Buy (above buy threshold) or Sell (below sell threshold)",
-  call_strength:"Raw combined signal value. Positive = Buy leaning, negative = Sell leaning. Magnitude = conviction",
+  call_strength:"Signal strength as a percentile of the ticker's own 5-yr signal range: P0 = most bearish reading, P50 = median, P100 = most bullish. Raw signal values are not comparable across tickers, percentiles are",
   sector:"Industry sector from Yahoo Finance",
   market_cap:"Total market capitalization (price \u00D7 shares outstanding)",
   last_yr_return:"Total return over the last 252 trading days using the CHC trading strategy",
@@ -721,7 +754,7 @@ function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
         <tr key={t.ticker} onClick={()=>onSelect(t.ticker)} style={{cursor:"pointer"}}>
           <td className="tc">{t.ticker}</td>
           <td className={t.buy_sell_call==="Buy"?"buy":"sell"}>{t.buy_sell_call}</td>
-          <td><StrengthBar value={t.call_strength}/></td>
+          <td><StrengthBar value={t.call_strength} percentile={t.signal_percentile} call={t.buy_sell_call}/></td>
           <td style={{color:"var(--text2)",fontSize:11,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.sector||"\u2014"}</td>
           <td style={{color:"var(--text2)",fontSize:12}}>{fmtCap(t.market_cap)}</td>
           <td className={pc(t.last_yr_return)}>{pct(t.last_yr_return)}</td>
@@ -749,6 +782,15 @@ function TickerDetail({data,onBack}) {
   const signalBg = isBuy ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)";
   const signalBorder = isBuy ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)";
 
+  // Signal strength as percentile of the ticker's own signal history.
+  // Conviction = how deep past the threshold, in percentile terms.
+  const sp = data.signal_percentile;
+  const bThPct = data.buy_threshold_pct != null ? data.buy_threshold_pct : 50;
+  const sThPct = data.sell_threshold_pct != null ? data.sell_threshold_pct : 50;
+  const spDist = sp != null ? (isBuy ? sp - bThPct : sThPct - sp) : null;
+  const spWord = spDist == null ? "" : spDist >= 30 ? "Strong" : spDist >= 12 ? "Moderate" : "Weak";
+  const ord = n => { const s = ["th","st","nd","rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+
   return (
     <div>
       <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:12,flexWrap:"wrap"}}>
@@ -761,7 +803,20 @@ function TickerDetail({data,onBack}) {
           <div style={{fontSize:28,fontWeight:800,color:signalColor}}>{data.buy_sell_call || "Hold"}</div>
           <div style={{borderLeft:"1px solid "+signalBorder,paddingLeft:16}}>
             <div style={{fontSize:11,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.5px"}}>Signal Strength</div>
-            <div style={{fontSize:18,fontWeight:700,color:signalColor}}>{data.call_strength != null ? (data.call_strength >= 0 ? "+" : "") + data.call_strength.toFixed(3) : "\u2014"}</div>
+            {sp != null ? (
+              <div>
+                <div style={{fontSize:16,fontWeight:700,color:signalColor}}>{spWord} {data.buy_sell_call}</div>
+                <div style={{position:"relative",width:170,height:6,background:"linear-gradient(90deg,rgba(239,68,68,0.4),rgba(148,163,184,0.2),rgba(34,197,94,0.4))",borderRadius:3,margin:"7px 0 5px"}}
+                     title={"Marker: today's signal at the " + ord(sp) + " percentile of this ticker's " + (data.eval_years || 5) + "-yr signal range. Ticks: buy/sell thresholds."}>
+                  <div style={{position:"absolute",left:sThPct+"%",top:-3,width:1,height:12,background:"var(--text2)",opacity:0.7}}/>
+                  {bThPct !== sThPct && <div style={{position:"absolute",left:bThPct+"%",top:-3,width:1,height:12,background:"var(--text2)",opacity:0.7}}/>}
+                  <div style={{position:"absolute",left:"calc("+sp+"% - 5px)",top:-2,width:10,height:10,borderRadius:"50%",background:signalColor,border:"2px solid var(--bg2)",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{fontSize:10,color:"var(--text2)"}}>{ord(sp)} percentile of {data.eval_years || 5}-yr range {"\u00b7"} raw {data.call_strength != null ? (data.call_strength >= 0 ? "+" : "") + data.call_strength.toFixed(4) : "\u2014"}</div>
+              </div>
+            ) : (
+              <div style={{fontSize:18,fontWeight:700,color:signalColor}}>{data.call_strength != null ? (data.call_strength >= 0 ? "+" : "") + data.call_strength.toFixed(3) : "\u2014"}</div>
+            )}
           </div>
         </div>
         {trading && (
@@ -3067,7 +3122,7 @@ function App() {
             style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"5px 10px",borderRadius:8,fontSize:14,cursor:"pointer",lineHeight:1}}>
             {theme==="dark"?"\u2600":"\u263D"}
           </button>
-          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.4.0</span>
+          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.5.0</span>
         </div>
       </div>
 
@@ -3508,6 +3563,12 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.5.0",date:"2026-08-05",items:[
+              "Signal strength made readable: shown as a percentile of the ticker's own 5-yr signal range instead of the raw unscaled value (raw values are not comparable across tickers, each Vol/Price Mix sets a different natural scale)",
+              "Analysis signal card: Strong/Moderate/Weak label, gauge with threshold tick marks and percentile marker, raw value kept as subtext",
+              "Select Assets & Screener tables: Strength column shows percentile (P82 style) with tooltip, falls back to raw value until screener data regenerates",
+              "Python screener emits signal_percentile per ticker; new Definitions entry explains the scale",
+            ]},
             {ver:"v5.4.0",date:"2026-06-12",items:[
               "Holdings table: Ann. % column, unrealized gain annualized over each position's weighted average holding period (hidden under 30 days held)",
               "Holdings table: Avg Hold column, weighted average holding period per position, reconstructed FIFO from daily position history with stock-split detection",
