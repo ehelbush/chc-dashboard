@@ -54,6 +54,13 @@ Combined Signal = (volPriceMix × Volume Ratio) + ((1 - volPriceMix) × Price Sl
 
 ## Current State — What Needs Doing Next
 
+### Priority 0: Action items from 2026-08-28 team meeting
+Full notes in `docs/meetings/2026-08-28-team-meeting.md`. Dashboard work agreed with Dan:
+1. **Realized vs. unrealized gains/losses tracking** — calendar YTD view, split long-term vs. short-term, for tax-aware rebalancing decisions. Underlying data exists in the Schwab/portfolio data. Start with a one-off analysis of the current tax position, then formalize as a recurring dashboard visualization.
+2. **Trial portfolio tagging** — tag positions/trades as belonging to a named portfolio (e.g. "trial") so a $10-15k trial portfolio (BTSG plus one or two other Portfolio Builder picks) can be tracked alongside the main portfolio without a separate Schwab account.
+3. **Asset exploration UX** — allow opening an asset in a new tab and/or an inline preview so drilling into an asset from the screener or Portfolio Builder does not lose the current view/state.
+4. **Claude onboarding doc for Dan** — write step-by-step instructions for Dan to subscribe to Claude and contribute to the dashboard; Eric to send during the week of 2026-08-31.
+
 ### Priority 1: GH_PAT in Vercel
 The `GH_PAT` has been added to Vercel environment variables. The Commit button on the Analysis tab should now work for saving optimized params. **Verify this works** by optimizing a ticker and clicking Commit.
 
