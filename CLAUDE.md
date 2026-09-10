@@ -5,7 +5,7 @@ CherryHead Capital Trading Model Dashboard — a single-file React app (`index.h
 
 **Live URL**: https://chc-dashboard-eight.vercel.app/
 **Repo**: https://github.com/ehelbush/chc-dashboard
-**Current version**: v5.3.0
+**Current version**: v5.7.0
 
 ## Architecture
 - **Frontend**: `index.html` — single-file React 18 + Babel standalone (~3,100 lines)
@@ -17,6 +17,7 @@ CherryHead Capital Trading Model Dashboard — a single-file React app (`index.h
 
 ## Tab Structure (current)
 1. **Performance** — NAV chart, P&L cards, toggleable benchmarks (SPY/QQQ/IWM/DIA), drawdown, monthly returns heatmap, strategy eras, holdings with CSV export, sector allocation, concentration metrics, Refresh Prices button
+1b. **Pilot Portfolio** — tracks the six-asset builder basket (inception 2026-09-04) defined in `data/pilot_portfolio.json`: summary cards, growth-vs-SPY chart since inception, positions table with signals (screener row when available, otherwise computed in-browser with default params, marked *), row click drills into Analysis
 2. **Analysis** — Optimize (primary) and Analyze sections, company fundamentals, financials, analyst consensus, news, signal chart, drawdown chart, trade statistics, trade log with CSV export
 3. **Select Assets** — 25 portfolio tickers table with data date indicator
 4. **Asset Screener** — 6,000+ tickers with filter dropdowns, presets, page jump, CSV export
@@ -31,6 +32,7 @@ Combined Signal = (volPriceMix × Volume Ratio) + ((1 - volPriceMix) × Price Sl
 ```
 
 **Parameters per ticker** (stored in `data/ticker_params.json`):
+- `vol_up_down_param` (K, default 0): Excel "Vol Up or Dwn Param". K=0 signs each day's volume by the direction of the move (+vol up day, -vol down day, 0 unchanged). K>0 scales volume by the size of the move, `(r - 1/r)/2/K` with `r = close/prev_close`, clamped to [-1, 1]. With K=1 the volume ratio is on the same ~0.01 scale as the price slope. About half of Dan's Excel models use K=1; params copied from Excel MUST carry the same K or the signal will not match (this was the FIX Buy-vs-Sell discrepancy, 2026-09-04)
 - `vol_flag` (0-3): MA window for volume ratio (0=1d, 1=50d, 2=100d, 3=120d)
 - `price_flag` (0-3): MA window for price slope
 - `vol_price_mix` (0-1): blend weight between volume and price signals
@@ -57,7 +59,7 @@ Combined Signal = (volPriceMix × Volume Ratio) + ((1 - volPriceMix) × Price Sl
 ### Priority 0: Action items from 2026-08-28 team meeting
 Full notes in `docs/meetings/2026-08-28-team-meeting.md`. Dashboard work agreed with Dan:
 1. **Realized vs. unrealized gains/losses tracking** — calendar YTD view, split long-term vs. short-term, for tax-aware rebalancing decisions. Underlying data exists in the Schwab/portfolio data. Start with a one-off analysis of the current tax position, then formalize as a recurring dashboard visualization.
-2. **Trial portfolio tagging** — tag positions/trades as belonging to a named portfolio (e.g. "trial") so a $10-15k trial portfolio (BTSG plus one or two other Portfolio Builder picks) can be tracked alongside the main portfolio without a separate Schwab account.
+2. **Trial portfolio tagging — DONE (v5.7.0, 2026-09-10).** Implemented as the Pilot Portfolio tab with the basket pinned in `data/pilot_portfolio.json` (the team funded six picks on 2026-09-04 instead of the originally discussed BTSG set; see `docs/meetings/2026-09-04-team-meeting.md`). Edit that JSON when the basket changes. Possible follow-up: support multiple named baskets.
 3. **Asset exploration UX** — allow opening an asset in a new tab and/or an inline preview so drilling into an asset from the screener or Portfolio Builder does not lose the current view/state.
 4. **Claude onboarding doc for Dan** — write step-by-step instructions for Dan to subscribe to Claude and contribute to the dashboard; Eric to send during the week of 2026-08-31.
 
@@ -92,7 +94,9 @@ The Refresh Prices button is built but could be enhanced:
 
 ### Other Ideas
 - **Asymmetric thresholds**: Implemented and available via checkbox. Team should evaluate whether the added search space is worth it.
-- **Volume up/down parameter**: Dan mentioned an additional parameter beyond the current vol_flag. May need to expand the model.
+- **Volume up/down parameter (K)**: Implemented 2026-09-04 (v5.6.0) as `vol_up_down_param`. The optimizer holds K fixed at its current value rather than searching over it; adding K to the search space is a possible follow-up.
+- **Price flag > 2 mismatch with Excel**: In Dan's `Stock_Analyzer.xlsm`, Price Av Flag 0/1/2 = 1d/50d/100d SMA but any value >2 is an EMA with span = flag (e.g. DASH uses 110). The dashboard treats price_flag 3 as a 120d SMA (used by AAPL, RCL, TPR, TSM saved params). Do not copy an Excel price flag >2 into the dashboard without converting.
+- **Reconciling with Excel**: Dan's per-ticker params live in `Param_Summary` of `~/Library/CloudStorage/Dropbox/Charts Copy/Charts Copy Vnew/Stock_Analyzer(*).xlsm` (columns: Mix, Buy Point, Sell Point, Vol Up or Dwn Param=K, Vol Up&Dwn Ratio Flag=vol_flag, Price Av Flag=price_flag); the `*_Rdump.xlsx` files hold his daily signal series. Yahoo adjusted closes match his data to <0.1% recently, so any signal difference is params, not data.
 
 ## Open Questions
 - **Traded portfolio builder**: Team agreed buy-and-hold first, traded v2 later. When ready, need to handle tax implications and fund reallocation between assets.

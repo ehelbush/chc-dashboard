@@ -95,6 +95,14 @@
     "vol_flag": 1,
     "vol_price_mix": 0
   },
+  "FIX": {
+    "buy_threshold": -0.0062,
+    "price_flag": 1,
+    "sell_threshold": -0.0062,
+    "vol_flag": 2,
+    "vol_price_mix": 0.82,
+    "vol_up_down_param": 1
+  },
   "GLDM": {
     "buy_threshold": -0.007,
     "last_optimized": "2026-04-02T22:09:56.789Z",

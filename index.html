@@ -174,12 +174,14 @@ const PORTFOLIO = {
 };
 
 const DEFINITIONS = [
+  ["Pilot Portfolio", "A basket of Portfolio Builder picks tracked separately from the main portfolio while sharing the same Schwab account. The basket's tickers, share counts, and cost basis are pinned in data/pilot_portfolio.json from the actual fills (inception 2026-09-04: ANDG, INFQ, LBRX, NAVN, GENB, VIA, ~$61K funded by a partial FIX sale). The Pilot Portfolio tab values those fixed quantities at current prices, so it isolates the experiment's performance even though the shares sit in the main account."],
   ["Signal (Buy/Sell)", "The model's current recommendation. Buy means the combined timing signal is above the buy threshold; Sell means it's below the sell threshold. Hold (carry previous signal) when between thresholds."],
   ["Call Strength", "The raw value of the combined timing signal. Positive values lean toward Buy, negative toward Sell. IMPORTANT: the raw value has no fixed scale and is NOT comparable across tickers. Each ticker's Vol/Price Mix sets its natural range: volume-heavy mixes produce signals up to about 1.0, price-heavy mixes rarely exceed 0.02. Compare it only to that ticker's own buy/sell thresholds, or use the Signal Percentile instead."],
   ["Signal Percentile (Strength)", "Where today's signal falls within the ticker's own signal history over the evaluation period. P0 = the most bearish reading of the period, P50 = median, P100 = most bullish. Unlike the raw Call Strength, percentiles are comparable across tickers. The strength word (Strong / Moderate / Weak) measures how deep past the buy or sell threshold the signal sits, in percentile terms: 30+ points past = Strong, 12+ = Moderate, less = Weak."],
   ["Vol/Price Mix", "The blend weight between volume ratio and price slope in the combined signal. 0 = 100% price, 1 = 100% volume. Each asset has its own optimized mix (e.g., AVGO uses 0.15, TPR uses 0.98)."],
   ["Vol Flag", "Controls the moving average window for the volume ratio calculation. 0 = 1-day (raw), 1 = 50-day, 2 = 100-day, 3 = 120-day. Longer windows smooth out noise but react slower."],
   ["Price Flag", "Controls the moving average window for the price slope calculation. Same scale as Vol Flag: 0 = 1-day, 1 = 50-day, 2 = 100-day, 3 = 120-day."],
+  ["Vol Up/Dwn Param (K)", "Excel 'Vol Up or Dwn Param'. Controls how each day's volume is signed before the Volume Ratio is computed. K = 0: sign only (+volume on an up day, -volume on a down day), so the ratio runs roughly -0.3 to +0.3. K > 0: volume is scaled by the size of the price move, (r - 1/r) / 2 / K with r = today / yesterday, capped at +/-100%. With K = 1 the ratio is close to a volume-weighted average daily return, so it sits on the same tiny scale as Price Slope (about +/-0.01) and the buy/sell thresholds must be set on that scale. About half of the Excel models use K = 1; params copied from Excel must carry the same K or the signal will not match."],
   ["Buy/Sell Threshold", "The combined signal level that triggers a Buy or Sell. When the signal crosses above the buy threshold, the model goes long. When it crosses below the sell threshold, it goes to cash. Each asset has its own tuned thresholds."],
   ["Last Yr Return", "The asset's total return over the most recent 252 trading days (approx 1 year), using the trading strategy (not buy-and-hold)."],
   ["Avg Yr Return (Annualized)", "The compound annual growth rate (CAGR) over the full evaluation period (default 5 years) using the trading strategy."],
@@ -212,6 +214,7 @@ function computeCHCModel(dates, closes, volumes, opts) {
   const {
     volFlag = 2, priceFlag = 1, volPriceMix = 0.72,
     buyThreshold = 0.0012, sellThreshold = -0.0012, evalYears = 5,
+    volUpDownParam = 0,
   } = opts || {};
 
   const n = closes.length;
@@ -231,11 +234,21 @@ function computeCHCModel(dates, closes, volumes, opts) {
   const priceWindow = maWindows[priceFlag] || 50;
   const lookback = Math.max(volWindow, priceWindow, 5);
 
-  // Volume up/down
+  // Volume up/down. K = 0 (Excel "Vol Up or Dwn Param"): sign of the daily
+  // move (+volume on an up day, -volume on a down day, 0 if unchanged).
+  // K > 0: volume scaled by the size of the move, (r - 1/r) / 2 / K where
+  // r = today/yesterday, clamped to [-1, +1]. Matches Timing!D:E in Stock_Analyzer.xlsm.
   const vud = new Float64Array(N);
   vud[0] = vo[0];
+  const K = Number(volUpDownParam) || 0;
   for (let i = 1; i < N; i++) {
-    vud[i] = cl[i] >= cl[i-1] ? vo[i] : -vo[i];
+    if (K !== 0) {
+      const r = cl[i-1] > 0 ? cl[i] / cl[i-1] : 1;
+      const f = Math.max(-1, Math.min(1, (r - 1 / r) / 2 / K));
+      vud[i] = f * vo[i];
+    } else {
+      vud[i] = cl[i] > cl[i-1] ? vo[i] : (cl[i] < cl[i-1] ? -vo[i] : 0);
+    }
   }
 
   // Volume ratio
@@ -430,7 +443,7 @@ function computeCHCModel(dates, closes, volumes, opts) {
     est_next_yr_return: +estNextYr.toFixed(6),
     eval_period_start: dt[si] || "", eval_period_end: dt[N-1] || "",
     eval_years: evalYears, trading, buy_hold: buyHold,
-    params: { vol_price_mix: volPriceMix, buy_threshold: buyThreshold, sell_threshold: sellThreshold },
+    params: { vol_price_mix: volPriceMix, buy_threshold: buyThreshold, sell_threshold: sellThreshold, vol_flag: volFlag, price_flag: priceFlag, vol_up_down_param: K },
     chart: { dates: chartDates, trading_balance: chartTrading, bh_balance: chartBH,
              signal: chartSignal, drawdown: chartDrawdown, bh_drawdown: chartBHDrawdown },
     trades, tradeStats,
@@ -1354,6 +1367,223 @@ function PortfolioBuilder({screenerData, onSelect}) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Pilot Portfolio ──────────────────────────────────────────────────────
+
+function PilotPortfolio({screenerData, onSelect}) {
+  const [config, setConfig] = useState(null);
+  const [schwabData, setSchwabData] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [liveQuotes, setLiveQuotes] = useState(null);
+  const [chart, setChart] = useState(null);
+  const [chartMsg, setChartMsg] = useState("Loading price history...");
+  const [modelSignals, setModelSignals] = useState({});
+
+  useEffect(() => {
+    fetch("data/pilot_portfolio.json").then(r => r.json()).then(setConfig)
+      .catch(() => setConfig({error: "Could not load data/pilot_portfolio.json"}));
+    fetch("/api/schwab").then(r => r.json()).then(d => {
+      if (d && d.accounts) setSchwabData(d); else throw new Error("no accounts");
+    }).catch(() => {
+      fetch("data/schwab_cache.json").then(r => r.json()).then(setSchwabData).catch(() => null);
+    });
+  }, []);
+
+  // Build the since-inception chart: actual share counts priced daily, vs the
+  // same dollars in SPY from the first close on or after inception.
+  useEffect(() => {
+    if (!config || !config.positions) return;
+    let cancelled = false;
+    (async () => {
+      const syms = config.positions.map(p => p.symbol).concat([config.benchmark || "SPY"]);
+      const px = {};
+      for (const s of syms) {
+        const d = await fetchYahooData(s, 1);
+        if (cancelled) return;
+        if (d && d.dates && d.dates.length > 0) px[s] = d;
+        else { setChartMsg("Could not load price history for " + s + "."); return; }
+      }
+      const bench = config.benchmark || "SPY";
+      let common = new Set(px[bench].dates);
+      for (const p of config.positions) {
+        const ds = new Set(px[p.symbol].dates);
+        common = new Set([...common].filter(d => ds.has(d)));
+      }
+      const dates = [...common].filter(d => d >= config.inception).sort();
+      if (dates.length === 0) { setChartMsg("No trading days since inception yet. Check back after the next market close."); return; }
+      const lookup = {};
+      for (const s of syms) {
+        lookup[s] = {};
+        px[s].dates.forEach((d, i) => { lookup[s][d] = px[s].closes[i]; });
+      }
+      const totalCost = config.positions.reduce((s, p) => s + p.cost, 0);
+      const bench0 = lookup[bench][dates[0]];
+      const rows = dates.map(d => {
+        let v = 0;
+        config.positions.forEach(p => { v += p.quantity * lookup[p.symbol][d]; });
+        return {date: d, pilot: v, bench: totalCost * lookup[bench][d] / bench0};
+      });
+      if (!cancelled) setChart({rows, totalCost, bench});
+      // Compute CHC signals in-browser for pilot tickers the daily screener
+      // does not cover, using the price history already fetched (default params).
+      const sigs = {};
+      for (const p of config.positions) {
+        const d = px[p.symbol];
+        if (d && d.volumes && d.closes.length >= 130) {
+          try {
+            const m = computeCHCModel(d.dates, d.closes, d.volumes, {});
+            if (m && !m.error) sigs[p.symbol] = {buy_sell_call: m.buy_sell_call, call_strength: m.call_strength, signal_percentile: m.signal_percentile, computed: true};
+          } catch (e) { /* leave without a signal */ }
+        }
+      }
+      if (!cancelled) setModelSignals(sigs);
+    })();
+    return () => { cancelled = true; };
+  }, [config]);
+
+  const refreshPrices = async () => {
+    if (!config || !config.positions || refreshing) return;
+    setRefreshing(true);
+    try {
+      const symbols = config.positions.map(p => p.symbol);
+      const resp = await fetch(`/api/yahoo_quotes?symbols=${symbols.join(",")}`);
+      const data = await resp.json();
+      if (data.quotes) { setLiveQuotes(data.quotes); setLastRefresh(new Date()); }
+    } catch (e) { console.error("Refresh failed:", e); }
+    setRefreshing(false);
+  };
+
+  if (!config) return <div className="card" style={{padding:40,textAlign:"center",color:"var(--text2)"}}>Loading pilot portfolio...</div>;
+  if (config.error) return <div className="card" style={{padding:40,textAlign:"center",color:"var(--red)"}}>{config.error}</div>;
+
+  const holdings = [];
+  if (schwabData && schwabData.accounts) schwabData.accounts.forEach(a => a.holdings && a.holdings.forEach(h => holdings.push(h)));
+
+  const rows = config.positions.map(p => {
+    const h = holdings.find(x => x.symbol === p.symbol) || {};
+    const q = liveQuotes && liveQuotes[p.symbol];
+    const price = q && q.price != null ? q.price : h.current_price;
+    const dayPct = q && q.change_pct != null ? q.change_pct : h.day_gain_pct;
+    const value = price != null ? price * p.quantity : null;
+    const gain = value != null ? value - p.cost : null;
+    const gainPct = gain != null ? gain / p.cost : null;
+    const sr = (screenerData && screenerData.results && screenerData.results.find(r => r.ticker === p.symbol)) || modelSignals[p.symbol];
+    return {...p, price, dayPct, value, gain, gainPct, sector: (sr && sr.sector) || p.sector, signal: sr};
+  });
+  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  const totalValue = rows.reduce((s, r) => s + (r.value || 0), 0);
+  const totalGain = totalValue - totalCost;
+  const totalGainPct = totalCost > 0 ? totalGain / totalCost : 0;
+  const dayGain = rows.reduce((s, r) => s + (r.dayPct != null && r.value != null ? r.value - r.value / (1 + r.dayPct / 100) : 0), 0);
+  const buyCount = rows.filter(r => r.signal && r.signal.buy_sell_call === "Buy").length;
+  const sellCount = rows.filter(r => r.signal && r.signal.buy_sell_call === "Sell").length;
+  const noSigCount = rows.length - buyCount - sellCount;
+  const benchReturn = chart && chart.rows.length > 0 ? chart.rows[chart.rows.length - 1].bench / chart.totalCost - 1 : null;
+  const daysHeld = Math.max(1, Math.round((Date.now() - new Date(config.inception + "T16:00:00-04:00").getTime()) / 86400000));
+  const sortedRows = [...rows].sort((a, b) => (b.value || 0) - (a.value || 0));
+
+  return (
+    <div>
+      <div className="card" style={{padding:"14px 20px",marginBottom:16,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <div>
+          <div className="card-title" style={{margin:0}}>{config.name}</div>
+          <div style={{color:"var(--text2)",fontSize:12,marginTop:4}}>
+            Inception {config.inception} ({daysHeld} days) {"·"} {rows.length} positions {"·"} funded ${totalCost.toLocaleString("en-US",{maximumFractionDigits:0})}
+          </div>
+        </div>
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+          {lastRefresh && <span style={{color:"var(--text2)",fontSize:11}}>Prices as of {lastRefresh.toLocaleTimeString()}</span>}
+          <button onClick={refreshPrices} disabled={refreshing}
+            style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"4px 12px",borderRadius:6,fontSize:12,cursor:refreshing?"wait":"pointer",opacity:refreshing?0.6:1,whiteSpace:"nowrap"}}>
+            {refreshing ? "Refreshing..." : "↻ Refresh Prices"}
+          </button>
+        </div>
+      </div>
+
+      <div className="metrics-grid">
+        <div className="metric-card">
+          <div className="metric-label">Market Value</div>
+          <div className="metric-value" style={{color:"var(--blue)"}}>${totalValue.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+          <div className="metric-sub">Cost basis ${totalCost.toLocaleString("en-US",{maximumFractionDigits:0})}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Total P&L</div>
+          <div className="metric-value" style={{color:totalGain >= 0 ? "var(--green)" : "var(--red)"}}>
+            {totalGain >= 0 ? "+" : "-"}${Math.abs(totalGain).toLocaleString("en-US",{maximumFractionDigits:0})}
+          </div>
+          <div className="metric-sub" style={{color:totalGainPct >= 0 ? "var(--green)" : "var(--red)"}}>{totalGainPct >= 0 ? "+" : ""}{(totalGainPct*100).toFixed(2)}% since inception</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Today's P&L</div>
+          <div className="metric-value" style={{color:dayGain >= 0 ? "var(--green)" : "var(--red)"}}>
+            {dayGain >= 0 ? "+" : "-"}${Math.abs(dayGain).toLocaleString("en-US",{maximumFractionDigits:0})}
+          </div>
+          <div className="metric-sub">{totalValue > 0 ? ((dayGain / (totalValue - dayGain)) * 100).toFixed(2) + "% today" : "—"}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">vs {chart ? chart.bench : "SPY"}</div>
+          <div className="metric-value" style={{color:benchReturn != null && totalGainPct >= benchReturn ? "var(--green)" : "var(--red)"}}>
+            {benchReturn != null ? (totalGainPct >= benchReturn ? "+" : "") + ((totalGainPct - benchReturn) * 100).toFixed(2) + "pp" : "—"}
+          </div>
+          <div className="metric-sub">{benchReturn != null ? (chart.bench + " " + (benchReturn >= 0 ? "+" : "") + (benchReturn*100).toFixed(2) + "% same period") : "Benchmark loading..."}</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Signals</div>
+          <div className="metric-value" style={{color:sellCount > 0 ? "var(--gold)" : "var(--green)"}}>{buyCount} Buy / {sellCount} Sell</div>
+          <div className="metric-sub">{noSigCount > 0 ? noSigCount + " pending signal data" : sellCount === 0 ? "All positions at buy signals" : "Review positions flagged Sell below"}</div>
+        </div>
+      </div>
+
+      <div className="card" style={{marginTop:16}}>
+        <div className="card-title">Growth Since Inception {"—"} Pilot vs {chart ? chart.bench : "SPY"}</div>
+        {chart ? (
+          <Chart data={chart.rows} height={320} xKey="date"
+            yFormat={v => "$" + (v/1000).toFixed(1) + "k"}
+            hLines={[{value: chart.totalCost, label: "Cost basis", color: "var(--text2)"}]}
+            lines={[
+              {key:"pilot", color:"#22c55e", label:"Pilot Portfolio", width:2.5},
+              {key:"bench", color:"#3b82f6", label:chart.bench, width:1.5, opacity:0.7},
+            ]}
+          />
+        ) : (
+          <div style={{padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>{chartMsg}</div>
+        )}
+      </div>
+
+      <div className="card" style={{marginTop:16,padding:"16px 20px"}}>
+        <div className="card-title" style={{marginBottom:12}}>
+          Positions
+          <span style={{color:"var(--text2)",fontWeight:400,fontSize:12,marginLeft:12}}>click a row to open it in Analysis</span>
+        </div>
+        <div className="table-wrap"><table><thead><tr>
+          <th>Ticker</th><th>Sector</th><th>Qty</th><th>Cost Basis</th><th>Price</th>
+          <th>Value</th><th>Weight</th><th>Day %</th><th>P&L $</th><th>P&L %</th><th>Signal</th><th>Strength</th>
+        </tr></thead><tbody>
+          {sortedRows.map(r => (
+            <tr key={r.symbol} onClick={() => onSelect && onSelect(r.symbol)} style={{cursor:"pointer"}}>
+              <td className="tc">{r.symbol}</td>
+              <td style={{color:"var(--text2)",fontSize:11}}>{r.sector || "—"}</td>
+              <td>{r.quantity.toLocaleString("en-US",{maximumFractionDigits:4})}</td>
+              <td>${r.cost.toLocaleString("en-US",{maximumFractionDigits:0})}</td>
+              <td>{r.price != null ? "$" + r.price.toFixed(2) : "—"}</td>
+              <td>{r.value != null ? "$" + r.value.toLocaleString("en-US",{maximumFractionDigits:0}) : "—"}</td>
+              <td style={{color:"var(--text2)"}}>{totalValue > 0 && r.value != null ? (r.value/totalValue*100).toFixed(1) + "%" : "—"}</td>
+              <td className={r.dayPct != null ? pc(r.dayPct) : ""}>{r.dayPct != null ? (r.dayPct >= 0 ? "+" : "") + r.dayPct.toFixed(2) + "%" : "—"}</td>
+              <td className={r.gain != null ? pc(r.gain) : ""}>{r.gain != null ? (r.gain >= 0 ? "+" : "-") + "$" + Math.abs(r.gain).toLocaleString("en-US",{maximumFractionDigits:0}) : "—"}</td>
+              <td className={r.gainPct != null ? pc(r.gainPct) : ""}>{r.gainPct != null ? (r.gainPct >= 0 ? "+" : "") + (r.gainPct*100).toFixed(2) + "%" : "—"}</td>
+              <td>{r.signal ? <span className={"badge " + (r.signal.buy_sell_call === "Buy" ? "badge-green" : "badge-red")} title={r.signal.computed ? "Computed in-browser with default model params (not in the daily screener run)" : "From the daily screener run"}>{r.signal.buy_sell_call}{r.signal.computed ? "*" : ""}</span> : "—"}</td>
+              <td>{r.signal ? <StrengthBar value={r.signal.call_strength} percentile={r.signal.signal_percentile} call={r.signal.buy_sell_call}/> : "—"}</td>
+            </tr>
+          ))}
+        </tbody></table></div>
+        <div style={{color:"var(--text2)",fontSize:11,marginTop:10}}>
+          Signals come from the daily market screener run ({screenerData && screenerData.date ? "data as of " + screenerData.date : "screener data unavailable"}); tickers the screener does not cover are computed in-browser from a year of daily prices with default model params and marked with *. Prices come from the Schwab sync{lastRefresh ? " with live refresh" : ""}. Position quantities and cost basis are pinned in data/pilot_portfolio.json from the 2026-09-04 fills; edit that file if the basket changes.
+        </div>
+      </div>
     </div>
   );
 }
@@ -2479,6 +2709,7 @@ function App() {
   const [priceFlag, setPriceFlag] = useState(1);
   const [buyThreshold, setBuyThreshold] = useState(0.0012);
   const [sellThreshold, setSellThreshold] = useState(-0.0012);
+  const [volUpDown, setVolUpDown] = useState(0);
   const [tickerParams, setTickerParams] = useState(null);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeResult, setOptimizeResult] = useState("");
@@ -2525,6 +2756,7 @@ function App() {
       setPriceFlag(p.price_flag);
       setBuyThreshold(p.buy_threshold);
       setSellThreshold(p.sell_threshold);
+      setVolUpDown(p.vol_up_down_param || 0);
     }
   }, [tickerParams]);
 
@@ -2541,6 +2773,7 @@ function App() {
     const pf = ov.priceFlag != null ? ov.priceFlag : priceFlag;
     const bt = ov.buyThreshold != null ? ov.buyThreshold : buyThreshold;
     const st = ov.sellThreshold != null ? ov.sellThreshold : sellThreshold;
+    const vk = ov.volUpDown != null ? ov.volUpDown : volUpDown;
 
     try {
       let dates, closes, volumes, name = s;
@@ -2565,6 +2798,7 @@ function App() {
         const result = computeCHCModel(dates, closes, volumes, {
           evalYears: yr, volPriceMix: mx,
           volFlag: vf, priceFlag: pf, buyThreshold: bt, sellThreshold: st,
+          volUpDownParam: vk,
         });
         if (result.error) { setError(result.error); setAnalyzing(false); return; }
         result.symbol = s;
@@ -2604,15 +2838,15 @@ function App() {
       setError(e.message);
     }
     setAnalyzing(false);
-  }, [symbol, years, mix, volFlag, priceFlag, buyThreshold, sellThreshold, localData, screenerData]);
+  }, [symbol, years, mix, volFlag, priceFlag, buyThreshold, sellThreshold, volUpDown, localData, screenerData]);
 
   const handleSelect = ticker => {
     setSymbol(ticker);
     setPage("analysis");
     const p = tickerParams && tickerParams[ticker.toUpperCase()];
-    if (p) { setMix(p.vol_price_mix); setVolFlag(p.vol_flag); setPriceFlag(p.price_flag); setBuyThreshold(p.buy_threshold); setSellThreshold(p.sell_threshold); }
+    if (p) { setMix(p.vol_price_mix); setVolFlag(p.vol_flag); setPriceFlag(p.price_flag); setBuyThreshold(p.buy_threshold); setSellThreshold(p.sell_threshold); setVolUpDown(p.vol_up_down_param || 0); }
     analyzeTicker(ticker, years, p ? p.vol_price_mix : mix, p ? {
-      volFlag: p.vol_flag, priceFlag: p.price_flag, buyThreshold: p.buy_threshold, sellThreshold: p.sell_threshold,
+      volFlag: p.vol_flag, priceFlag: p.price_flag, buyThreshold: p.buy_threshold, sellThreshold: p.sell_threshold, volUpDown: p.vol_up_down_param || 0,
     } : undefined);
   };
   const handleKey = e => { if (e.key === "Enter") analyzeTicker(); };
@@ -2624,7 +2858,8 @@ function App() {
     const c = committedParams[s];
     if (!c) return tickerParams && tickerParams[s]; // new ticker, never committed
     return c.vol_flag !== volFlag || c.price_flag !== priceFlag ||
-      c.vol_price_mix !== mix || c.buy_threshold !== buyThreshold || c.sell_threshold !== sellThreshold;
+      c.vol_price_mix !== mix || c.buy_threshold !== buyThreshold || c.sell_threshold !== sellThreshold ||
+      (c.vol_up_down_param || 0) !== volUpDown;
   })();
 
   const commitParams = async () => {
@@ -2635,6 +2870,7 @@ function App() {
     const paramObj = {
       vol_flag: volFlag, price_flag: priceFlag, vol_price_mix: mix,
       buy_threshold: buyThreshold, sell_threshold: sellThreshold,
+      vol_up_down_param: volUpDown,
     };
     // Include optimization metadata if present
     const current = tickerParams && tickerParams[s];
@@ -2667,11 +2903,11 @@ function App() {
     if (!c) {
       // Ticker was never committed — revert to default params
       setVolFlag(2); setPriceFlag(1); setMix(0.72);
-      setBuyThreshold(0.0012); setSellThreshold(-0.0012);
+      setBuyThreshold(0.0012); setSellThreshold(-0.0012); setVolUpDown(0);
       setTickerParams(prev => { const next = {...prev}; delete next[s]; return next; });
       setSaveMsg("Reverted " + s + " to defaults (no committed params)");
       setOptimizeResult("");
-      analyzeTicker(s, years, 0.72, {volFlag: 2, priceFlag: 1, buyThreshold: 0.0012, sellThreshold: -0.0012});
+      analyzeTicker(s, years, 0.72, {volFlag: 2, priceFlag: 1, buyThreshold: 0.0012, sellThreshold: -0.0012, volUpDown: 0});
       return;
     }
     setVolFlag(c.vol_flag);
@@ -2679,15 +2915,17 @@ function App() {
     setMix(c.vol_price_mix);
     setBuyThreshold(c.buy_threshold);
     setSellThreshold(c.sell_threshold);
+    setVolUpDown(c.vol_up_down_param || 0);
     // Reset in-memory tickerParams to committed state
     setTickerParams(prev => ({...prev, [s]: {...c}}));
     setSaveMsg("Reverted " + s + " to committed params");
     setOptimizeResult("");
-    analyzeTicker(s, years, c.vol_price_mix, {volFlag: c.vol_flag, priceFlag: c.price_flag, buyThreshold: c.buy_threshold, sellThreshold: c.sell_threshold});
+    analyzeTicker(s, years, c.vol_price_mix, {volFlag: c.vol_flag, priceFlag: c.price_flag, buyThreshold: c.buy_threshold, sellThreshold: c.sell_threshold, volUpDown: c.vol_up_down_param || 0});
   };
 
   // Core optimizer: returns {best, trainMetrics, testMetrics, totalCombos} or null
-  const runOptimizer = async (s, evalYears, recLimit, onProgress, useAsymmetric) => {
+  const runOptimizer = async (s, evalYears, recLimit, onProgress, useAsymmetric, volUpDownK) => {
+    const vk = Number(volUpDownK) || 0;
     let dates, closes, volumes;
     const yfData = await fetchYahooData(s, evalYears + 1);
     if (yfData && !yfData.error) { dates = yfData.dates; closes = yfData.closes; volumes = yfData.volumes; }
@@ -2705,7 +2943,7 @@ function App() {
     const trainYears = Math.max(1, Math.round((trainDates.length - startIdx) / 252));
 
     const ep = (d, c, v, yr, vf, pf, mx, bt, st) => {
-      const r = computeCHCModel(d, c, v, { evalYears: yr, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: bt, sellThreshold: st !== undefined ? st : bt });
+      const r = computeCHCModel(d, c, v, { evalYears: yr, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: bt, sellThreshold: st !== undefined ? st : bt, volUpDownParam: vk });
       return (r && !r.error && r.trading) ? { ret: r.trading.avg_yr_return || 0, rec: r.trading.recovery_period || 0 } : null;
     };
 
@@ -2807,7 +3045,7 @@ function App() {
     const wfAvgReturn = wfReturns.length > 0 ? wfReturns.reduce((a, b) => a + b, 0) / wfReturns.length : null;
 
     return {
-      best, totalCombos: allResults.length,
+      best: {...best, vk}, totalCombos: allResults.length,
       trainMetrics: { avg_yr_return: best.ret, recovery_period: best.rec },
       testMetrics: testResult ? { avg_yr_return: testResult.ret, recovery_period: testResult.rec } : null,
       walkForward: wfAvgReturn !== null ? { avg_return: wfAvgReturn, folds: wfReturns.length, returns: wfReturns } : null,
@@ -2821,7 +3059,7 @@ function App() {
     setOptimizeResult("");
     setError(null);
 
-    const result = await runOptimizer(s, years, maxRecovery || 5, msg => setOptimizeResult(msg), asymmetric);
+    const result = await runOptimizer(s, years, maxRecovery || 5, msg => setOptimizeResult(msg), asymmetric, volUpDown);
     if (!result) { setError("No valid params found for " + s); setOptimizing(false); return; }
 
     const {best, trainMetrics, testMetrics, totalCombos, walkForward} = result;
@@ -2841,29 +3079,30 @@ function App() {
     const prevParams = tickerParams && tickerParams[s] ? {...tickerParams[s]} : null;
     const optimizedEntry = {
       vol_flag: best.vf, price_flag: best.pf, vol_price_mix: best.mx,
-      buy_threshold: best.bt, sell_threshold: best.st,
+      buy_threshold: best.bt, sell_threshold: best.st, vol_up_down_param: best.vk,
       last_optimized: now, prev_params: prevParams,
       train_metrics: trainMetrics, test_metrics: testMetrics,
       walk_forward: walkForward,
     };
     setTickerParams(prev => ({...prev, [s]: {...(prev && prev[s] || {}), ...optimizedEntry}}));
     setOptimizing(false);
-    analyzeTicker(s, years, best.mx, {volFlag: best.vf, priceFlag: best.pf, buyThreshold: best.bt, sellThreshold: best.st});
+    analyzeTicker(s, years, best.mx, {volFlag: best.vf, priceFlag: best.pf, buyThreshold: best.bt, sellThreshold: best.st, volUpDown: best.vk});
   };
 
   // Optimize a single ticker from the Params tab (doesn't touch ribbon state)
   const optimizeTickerForParams = async (ticker) => {
     const recLimit = maxRecovery || 5;
+    const savedK = tickerParams && tickerParams[ticker] ? (tickerParams[ticker].vol_up_down_param || 0) : 0;
     const result = await runOptimizer(ticker, years, recLimit, msg => {
       setBulkProgress(prev => prev ? {...prev, ticker: ticker + " " + msg} : null);
-    }, asymmetric);
+    }, asymmetric, savedK);
     if (!result) return null;
     const {best, trainMetrics, testMetrics, walkForward} = result;
     const now = new Date().toISOString();
     const prevParams = tickerParams && tickerParams[ticker] ? {...tickerParams[ticker]} : null;
     const entry = {
       vol_flag: best.vf, price_flag: best.pf, vol_price_mix: best.mx,
-      buy_threshold: best.bt, sell_threshold: best.st,
+      buy_threshold: best.bt, sell_threshold: best.st, vol_up_down_param: best.vk,
       last_optimized: now, prev_params: prevParams,
       train_metrics: trainMetrics, test_metrics: testMetrics,
       walk_forward: walkForward,
@@ -2899,6 +3138,7 @@ function App() {
     const paramObj = {
       vol_flag: p.vol_flag, price_flag: p.price_flag, vol_price_mix: p.vol_price_mix,
       buy_threshold: p.buy_threshold, sell_threshold: p.sell_threshold,
+      vol_up_down_param: p.vol_up_down_param || 0,
     };
     if (p.last_optimized) paramObj.last_optimized = p.last_optimized;
     if (p.train_metrics) paramObj.train_metrics = p.train_metrics;
@@ -2926,6 +3166,7 @@ function App() {
         full[t] = {
           vol_flag: p.vol_flag, price_flag: p.price_flag, vol_price_mix: p.vol_price_mix,
           buy_threshold: p.buy_threshold, sell_threshold: p.sell_threshold,
+          vol_up_down_param: p.vol_up_down_param || 0,
         };
         if (p.last_optimized) full[t].last_optimized = p.last_optimized;
         if (p.train_metrics) full[t].train_metrics = p.train_metrics;
@@ -2977,15 +3218,16 @@ function App() {
       if (!priceCache[t]) continue;
       const {dates: d, closes: c, volumes: v} = priceCache[t];
       const results = [];
+      const tk = tickerParams[t] ? (tickerParams[t].vol_up_down_param || 0) : 0;
       for (const vf of vFlags) {
         for (const pf of pFlags) {
           for (const mx of mixes) {
             for (const th of thresholds) {
-              const r = computeCHCModel(d, c, v, {evalYears: years, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th});
+              const r = computeCHCModel(d, c, v, {evalYears: years, volPriceMix: mx, volFlag: vf, priceFlag: pf, buyThreshold: th, sellThreshold: th, volUpDownParam: tk});
               if (r && !r.error && r.trading) {
                 const ret = r.trading.avg_yr_return || 0;
                 const rec = r.trading.recovery_period || 0;
-                if (rec > 0 && rec <= recLimit) results.push({vf, pf, mx, bt: th, st: th, ret, rec});
+                if (rec > 0 && rec <= recLimit) results.push({vf, pf, mx, bt: th, st: th, vk: tk, ret, rec});
               }
             }
           }
@@ -2994,7 +3236,7 @@ function App() {
       results.sort((a, b) => b.ret - a.ret);
       // Keep current params as candidate[0], then top unique alternatives
       const current = tickerParams[t];
-      const currentEntry = {vf: current.vol_flag, pf: current.price_flag, mx: current.vol_price_mix, bt: current.buy_threshold, st: current.sell_threshold, ret: current.train_metrics ? current.train_metrics.avg_yr_return : 0, rec: current.train_metrics ? current.train_metrics.recovery_period : 5};
+      const currentEntry = {vf: current.vol_flag, pf: current.price_flag, mx: current.vol_price_mix, bt: current.buy_threshold, st: current.sell_threshold, vk: current.vol_up_down_param || 0, ret: current.train_metrics ? current.train_metrics.avg_yr_return : 0, rec: current.train_metrics ? current.train_metrics.recovery_period : 5};
       candidatesPerTicker[t] = [currentEntry, ...results.slice(0, 2)];
       setBulkProgress(prev => ({...prev, ticker: "Coarse search: " + t + " (" + results.length + " valid)"}));
       await new Promise(ok => setTimeout(ok, 0));
@@ -3022,7 +3264,7 @@ function App() {
       balanceSeries[t] = [];
       for (const cand of candidatesPerTicker[t]) {
         const r = computeCHCModel(priceCache[t].dates, priceCache[t].closes, priceCache[t].volumes, {
-          evalYears: years, volPriceMix: cand.mx, volFlag: cand.vf, priceFlag: cand.pf, buyThreshold: cand.bt, sellThreshold: cand.st,
+          evalYears: years, volPriceMix: cand.mx, volFlag: cand.vf, priceFlag: cand.pf, buyThreshold: cand.bt, sellThreshold: cand.st, volUpDownParam: cand.vk || 0,
         });
         if (r && r.chart && r.chart.dates) {
           const lookup = {};
@@ -3094,7 +3336,7 @@ function App() {
         const prev = tickerParams[t] ? {...tickerParams[t]} : null;
         const entry = {
           vol_flag: cand.vf, price_flag: cand.pf, vol_price_mix: cand.mx,
-          buy_threshold: cand.bt, sell_threshold: cand.st,
+          buy_threshold: cand.bt, sell_threshold: cand.st, vol_up_down_param: cand.vk || 0,
           last_optimized: now, prev_params: prev,
           train_metrics: {avg_yr_return: cand.ret, recovery_period: cand.rec},
         };
@@ -3122,7 +3364,7 @@ function App() {
             style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"5px 10px",borderRadius:8,fontSize:14,cursor:"pointer",lineHeight:1}}>
             {theme==="dark"?"\u2600":"\u263D"}
           </button>
-          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.5.0</span>
+          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.7.0</span>
         </div>
       </div>
 
@@ -3136,10 +3378,10 @@ function App() {
 
       <div className={"nav-tabs"+(navOpen?" open":"")}>
         <button className="hamburger" onClick={()=>setNavOpen(p=>!p)}>
-          {navOpen ? "\u2715" : "\u2630"} {({account:"Performance",analysis:"Analysis",portfolio:"Select Assets",screener:"Asset Screener",builder:"Portfolio Builder",params:"Params",definitions:"Definitions",changelog:"Changelog"})[page] || "Menu"}
+          {navOpen ? "\u2715" : "\u2630"} {({account:"Performance",pilot:"Pilot Portfolio",analysis:"Analysis",portfolio:"Select Assets",screener:"Asset Screener",builder:"Portfolio Builder",params:"Params",definitions:"Definitions",changelog:"Changelog"})[page] || "Menu"}
         </button>
         {[
-          ["account","Performance"],["analysis","Analysis"],["portfolio","Select Assets"],
+          ["account","Performance"],["pilot","Pilot Portfolio"],["analysis","Analysis"],["portfolio","Select Assets"],
           ["screener","Asset Screener"],["builder","Portfolio Builder"],["params","Params"],
           ["definitions","Definitions"],["changelog","Changelog"]
         ].map(([key,label])=>(
@@ -3173,7 +3415,7 @@ function App() {
                   <div className="cg"><label style={{fontSize:9}}>Asym Thresholds</label><input type="checkbox" checked={asymmetric} onChange={e=>setAsymmetric(e.target.checked)} style={{width:16,height:16,margin:"4px 0 0"}}/></div>
                   <button onClick={()=>optimizeTicker()} disabled={analyzing||optimizing||!symbol}>{optimizing?"Optimizing...":"Optimize"}</button>
                 </div>
-                <div style={{fontSize:10,color:"var(--text2)",marginTop:6}}>Searches ~11K param combos using Ticker + Period above. Best result populates Model Params and runs Analyze.</div>
+                <div style={{fontSize:10,color:"var(--text2)",marginTop:6}}>Searches ~11K param combos using Ticker + Period above, holding Vol Up/Dwn K at its current value. Best result populates Model Params and runs Analyze.</div>
               </div>
 
               {/* Analyze: manual backtest with specific params */}
@@ -3193,6 +3435,7 @@ function App() {
                   <div className="cg"><label>Vol/Price Mix</label><input type="number" value={mix} onChange={e=>setMix(Number(e.target.value))} step={0.05} min={0} max={1} style={{width:80}}/></div>
                   <div className="cg"><label>Buy Threshold</label><input type="number" value={buyThreshold} onChange={e=>setBuyThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
                   <div className="cg"><label>Sell Threshold</label><input type="number" value={sellThreshold} onChange={e=>setSellThreshold(Number(e.target.value))} step={0.0005} style={{width:100}}/></div>
+                  <div className="cg"><label title="Excel 'Vol Up or Dwn Param'. 0 = sign of daily move only; 1 = volume scaled by the size of the move (see Definitions)">Vol Up/Dwn K</label><input type="number" value={volUpDown} onChange={e=>setVolUpDown(Number(e.target.value))} step={0.05} min={0} style={{width:80}}/></div>
                   <button onClick={()=>analyzeTicker()} disabled={analyzing||optimizing||!symbol} style={{background:"var(--bg3)",border:"1px solid var(--border)"}}>{analyzing?"Analyzing...":"Analyze"}</button>
                 </div>
               </div>
@@ -3324,6 +3567,10 @@ function App() {
         <SchwabAccount onAnalyzeTicker={handleSelect}/>
       )}
 
+      {view==="dashboard"&&page==="pilot"&&(
+        <PilotPortfolio screenerData={screenerData} onSelect={handleSelect}/>
+      )}
+
       {view==="dashboard"&&page==="screener"&&(
         <MarketScreener onSelect={handleSelect}/>
       )}
@@ -3372,7 +3619,7 @@ function App() {
                 const data = {};
                 for (const t of allParamTickers) {
                   const p = tickerParams && tickerParams[t];
-                  if (p) { data[t] = {vol_flag:p.vol_flag, price_flag:p.price_flag, vol_price_mix:p.vol_price_mix, buy_threshold:p.buy_threshold, sell_threshold:p.sell_threshold}; }
+                  if (p) { data[t] = {vol_flag:p.vol_flag, price_flag:p.price_flag, vol_price_mix:p.vol_price_mix, buy_threshold:p.buy_threshold, sell_threshold:p.sell_threshold, vol_up_down_param:p.vol_up_down_param || 0}; }
                 }
                 const blob = new Blob([JSON.stringify(data, null, 2)], {type:"application/json"});
                 const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "ticker_params_backup.json"; a.click();
@@ -3446,7 +3693,7 @@ function App() {
                 <thead><tr>
                   {[
                     {key:"ticker",label:"Ticker"}, {key:"vol_flag",label:"Vol"}, {key:"price_flag",label:"Price"},
-                    {key:"vol_price_mix",label:"Mix"}, {key:"buy_threshold",label:"Buy Th"}, {key:"sell_threshold",label:"Sell Th"},
+                    {key:"vol_up_down_param",label:"Vol K"}, {key:"vol_price_mix",label:"Mix"}, {key:"buy_threshold",label:"Buy Th"}, {key:"sell_threshold",label:"Sell Th"},
                     {key:"train_ret",label:"Train Ret"}, {key:"train_rec",label:"Train Rec"},
                     {key:"test_ret",label:"Test Ret"}, {key:"test_rec",label:"Test Rec"},
                     {key:"wf_ret",label:"WF Avg"},
@@ -3464,7 +3711,8 @@ function App() {
                     const p = tickerParams && tickerParams[ticker];
                     const c = committedParams && committedParams[ticker];
                     const isChanged = p && c && (p.vol_flag !== c.vol_flag || p.price_flag !== c.price_flag ||
-                      p.vol_price_mix !== c.vol_price_mix || p.buy_threshold !== c.buy_threshold || p.sell_threshold !== c.sell_threshold);
+                      p.vol_price_mix !== c.vol_price_mix || p.buy_threshold !== c.buy_threshold || p.sell_threshold !== c.sell_threshold ||
+                      (p.vol_up_down_param || 0) !== (c.vol_up_down_param || 0));
                     const isNew = p && !c;
                     const overfit = p && p.train_metrics && p.test_metrics &&
                       p.test_metrics.avg_yr_return < p.train_metrics.avg_yr_return * 0.5;
@@ -3479,7 +3727,7 @@ function App() {
                     else if (k === "test_rec") { av = a.p && a.p.test_metrics ? a.p.test_metrics.recovery_period : 999; bv = b.p && b.p.test_metrics ? b.p.test_metrics.recovery_period : 999; }
                     else if (k === "wf_ret") { av = a.p && a.p.walk_forward ? a.p.walk_forward.avg_return : -999; bv = b.p && b.p.walk_forward ? b.p.walk_forward.avg_return : -999; }
                     else if (k === "last_optimized") { av = a.p && a.p.last_optimized || ""; bv = b.p && b.p.last_optimized || ""; }
-                    else { av = a.p ? a.p[k] : 0; bv = b.p ? b.p[k] : 0; }
+                    else { av = a.p ? (a.p[k] || 0) : 0; bv = b.p ? (b.p[k] || 0) : 0; }
                     if (av === bv) return 0;
                     return (av > bv ? 1 : -1) * paramsSortCfg.dir;
                   }).map(({ticker, p, isChanged, isNew, overfit}) => (
@@ -3490,6 +3738,7 @@ function App() {
                       </td>
                       <td>{p ? p.vol_flag : "\u2014"}</td>
                       <td>{p ? p.price_flag : "\u2014"}</td>
+                      <td>{p ? (p.vol_up_down_param || 0) : "\u2014"}</td>
                       <td>{p ? p.vol_price_mix.toFixed(2) : "\u2014"}</td>
                       <td>{p ? p.buy_threshold.toFixed(4) : "\u2014"}</td>
                       <td style={{color: p && p.buy_threshold !== p.sell_threshold ? "orange" : "inherit"}}>
@@ -3563,6 +3812,23 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.7.0",date:"2026-09-10",items:[
+              "New Pilot Portfolio tab tracking the six-asset Portfolio Builder basket funded 2026-09-04 (ANDG, INFQ, LBRX, NAVN, GENB, VIA)",
+              "Summary cards: market value, total P&L, today's P&L, performance vs SPY over the same period, and a Buy/Sell signal count across the basket",
+              "Growth chart since inception: actual share counts priced daily vs the same dollars in SPY, with a cost-basis reference line",
+              "Positions table with live prices, per-position P&L, weight, and the daily screener's Buy/Sell signal and strength percentile; click any row to drill into the Analysis tab",
+              "Refresh Prices button for live quotes on the pilot names",
+              "Basket definition pinned in data/pilot_portfolio.json (quantities and cost basis from the actual 2026-09-04 fills); edit that file when the basket changes",
+            ]},
+            {ver:"v5.6.0",date:"2026-09-04",items:[
+              "New model parameter: Vol Up/Dwn K (Excel 'Vol Up or Dwn Param'). K = 0 keeps the old sign-only volume up/down; K > 0 scales each day's volume by the size of the price move, capped at +/-100%, exactly as Timing!D:E in Stock_Analyzer.xlsm. About half of the Excel models use K = 1, and without it the dashboard could not reproduce their signals (FIX showed Buy while Excel showed Sell)",
+              "Vol Up/Dwn K input in Model Params, Vol K column in the Params table, saved as vol_up_down_param in ticker_params.json (missing = 0, so existing params are unchanged); Commit, Revert, Export, Import, Optimize and Portfolio Opt all carry it through",
+              "Optimizer holds K at its current value while searching; set K first, then Optimize",
+              "Python screener (fetch_all_tickers.py) reads vol_up_down_param from saved params",
+              "Volume up/down on an unchanged close now counts as 0 instead of +volume, matching Excel",
+              "FIX added to saved params with the Excel model's values (mix 0.82, K 1, thresholds -0.0062)",
+              "New Definitions entry for Vol Up/Dwn Param (K)",
+            ]},
             {ver:"v5.5.0",date:"2026-08-05",items:[
               "Signal strength made readable: shown as a percentile of the ticker's own 5-yr signal range instead of the raw unscaled value (raw values are not comparable across tickers, each Vol/Price Mix sets a different natural scale)",
               "Analysis signal card: Strong/Moderate/Weak label, gauge with threshold tick marks and percentile marker, raw value kept as subtext",

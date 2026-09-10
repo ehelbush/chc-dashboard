@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dev",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "-l", "8765", "--no-clipboard"],
-      "port": 8765
+      "name": "static-dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8899"],
+      "port": 8899
     }
   ]
 }

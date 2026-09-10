@@ -29,7 +29,8 @@ import numpy as np
 
 def compute_chc_model(dates, closes, volumes, eval_years=5,
                       vol_flag=2, price_flag=1, vol_price_mix=0.72,
-                      buy_threshold=0.0012, sell_threshold=-0.0012):
+                      buy_threshold=0.0012, sell_threshold=-0.0012,
+                      vol_up_down_param=0.0):
     n = len(closes)
     if n < 130:
         return None
@@ -49,11 +50,24 @@ def compute_chc_model(dates, closes, volumes, eval_years=5,
     if N < lookback + 10:
         return None
 
-    # Volume up/down
+    # Volume up/down. K = 0 (Excel "Vol Up or Dwn Param"): sign of the daily
+    # move (+volume up day, -volume down day, 0 unchanged). K > 0: volume scaled
+    # by the size of the move, (r - 1/r) / 2 / K, clamped to [-1, 1].
+    # Matches Timing!D:E in Stock_Analyzer.xlsm.
+    K = float(vol_up_down_param or 0)
     vud = np.zeros(N)
     vud[0] = vo[0]
     for i in range(1, N):
-        vud[i] = vo[i] if cl[i] >= cl[i-1] else -vo[i]
+        if K != 0:
+            r = cl[i] / cl[i-1] if cl[i-1] > 0 else 1.0
+            f = max(-1.0, min(1.0, (r - 1.0 / r) / 2.0 / K))
+            vud[i] = f * vo[i]
+        elif cl[i] > cl[i-1]:
+            vud[i] = vo[i]
+        elif cl[i] < cl[i-1]:
+            vud[i] = -vo[i]
+        else:
+            vud[i] = 0.0
 
     # Volume ratio
     vr = np.ones(N)
@@ -340,6 +354,7 @@ def main():
                 vol_price_mix=tp.get("vol_price_mix", 0.72),
                 buy_threshold=tp.get("buy_threshold", 0.0012),
                 sell_threshold=tp.get("sell_threshold", -0.0012),
+                vol_up_down_param=tp.get("vol_up_down_param", 0),
             )
             if result is None:
                 errors += 1

@@ -1,0 +1,50 @@
+{
+  "name": "Pilot Portfolio",
+  "inception": "2026-09-04",
+  "description": "Portfolio Builder basket approved at the 2026-09-04 team meeting (Eric, Dan). Funded by a partial FIX sale (38 sh, $60,937). Six equal ~$10K positions; VIA received ~$11.15K via a dollar-based order.",
+  "benchmark": "SPY",
+  "positions": [
+    {
+      "symbol": "ANDG",
+      "quantity": 177,
+      "cost": 9967.76,
+      "entry_date": "2026-09-04",
+      "sector": "Consumer Cyclical"
+    },
+    {
+      "symbol": "INFQ",
+      "quantity": 780,
+      "cost": 9972.3,
+      "entry_date": "2026-09-04",
+      "sector": "Technology"
+    },
+    {
+      "symbol": "LBRX",
+      "quantity": 202,
+      "cost": 9958.58,
+      "entry_date": "2026-09-04",
+      "sector": "Healthcare"
+    },
+    {
+      "symbol": "NAVN",
+      "quantity": 358,
+      "cost": 9982.83,
+      "entry_date": "2026-09-04",
+      "sector": "Technology"
+    },
+    {
+      "symbol": "GENB",
+      "quantity": 604,
+      "cost": 9966.0,
+      "entry_date": "2026-09-04",
+      "sector": "Healthcare"
+    },
+    {
+      "symbol": "VIA",
+      "quantity": 400.2864,
+      "cost": 11152.0,
+      "entry_date": "2026-09-04",
+      "sector": "Technology"
+    }
+  ]
+}
