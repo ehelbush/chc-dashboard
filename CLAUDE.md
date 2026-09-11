@@ -5,7 +5,7 @@ CherryHead Capital Trading Model Dashboard — a single-file React app (`index.h
 
 **Live URL**: https://chc-dashboard-eight.vercel.app/
 **Repo**: https://github.com/ehelbush/chc-dashboard
-**Current version**: v5.7.0
+**Current version**: v5.8.0
 
 ## Architecture
 - **Frontend**: `index.html` — single-file React 18 + Babel standalone (~3,100 lines)
@@ -58,10 +58,10 @@ Combined Signal = (volPriceMix × Volume Ratio) + ((1 - volPriceMix) × Price Sl
 
 ### Priority 0: Action items from 2026-09-11 team meeting
 Full notes in `docs/meetings/2026-09-11-team-meeting.md`. Dashboard work agreed with Dan:
-1. **Buy/Sell signal column on the Performance tab Holdings table** — source from the daily screener (like the Pilot Portfolio tab), in-browser computed fallback for uncovered tickers.
-2. **Add pilot tickers to the normal asset set** — ANDG, INFQ, LBRX, NAVN, GENB, VIA into Select Assets / `ticker_params.json` / `tickers.json` (see `add_ticker.py`) for daily signal coverage and optimizable params.
-3. **Time period toggle on Analysis charts** — range selector (3M/6M/1Y/ALL) for the growth/signal/drawdown charts; same for the Pilot tab chart.
-4. **Python Excel data feed (contingent)** — if Microsoft's STOCKHISTORY outage (down since 9/4, confirmed service-side) persists past the weekend, write Date/Close/Volume per ticker from Yahoo into the Dropbox location Dan's `Stock_Analyzer` workbooks read.
+1. **Buy/Sell signal column on the Holdings table — DONE (v5.8.0, 2026-09-11).** Sourced from the daily screener, sortable, in CSV export.
+2. **Pilot tickers in the normal asset set — DONE (v5.8.0, 2026-09-11).** ANDG, INFQ, LBRX, NAVN, GENB, VIA added to SEED_DATA, `ticker_params.json` (DEFAULT params — not yet optimized; run Optimize + Commit per ticker), and `tickers.json`.
+3. **Time period toggle on Analysis charts — DONE (v5.8.0, 2026-09-11).** 3M/6M/1Y/2Y/ALL on growth/signal/drawdown charts (shared state); 1M/3M/6M/1Y/ALL on the Pilot chart. Cutoff anchors to the chart data's last date, not today, so the stale local tickers.json fallback still windows correctly.
+4. **Python Excel data feed (contingent, still open)** — if Microsoft's STOCKHISTORY outage (down since 9/4, confirmed service-side) persists past the weekend of 9/12, write Date/Close/Volume per ticker from Yahoo into the Dropbox location Dan's `Stock_Analyzer` workbooks read.
 
 ### Prior action items from 2026-08-28 team meeting
 Full notes in `docs/meetings/2026-08-28-team-meeting.md`. Dashboard work agreed with Dan:

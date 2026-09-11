@@ -166,6 +166,13 @@ const SEED_DATA = [
   {ticker:"USO",buy_sell_call:"Buy",call_strength:1.0,last_yr_return:0.6262,av_yrly_return:0.2147,est_next_yr_return:0.2997,current_loss:0.0,stat3_loss:-0.4409,recovery_period:5.98},
   {ticker:"MU",buy_sell_call:"Buy",call_strength:0.3304,last_yr_return:2.6503,av_yrly_return:0.3081,est_next_yr_return:-0.3461,current_loss:-0.0741,stat3_loss:-0.5973,recovery_period:6.77},
   {ticker:"TSLA",buy_sell_call:"Sell",call_strength:-0.3177,last_yr_return:0.0423,av_yrly_return:0.1306,est_next_yr_return:0.4271,current_loss:-0.2691,stat3_loss:-0.6539,recovery_period:17.29},
+  // Pilot portfolio tickers, promoted to the normal asset set 2026-09-11 (stats seeded from that day's screener run)
+  {ticker:"ANDG",buy_sell_call:"Buy",call_strength:0.0313,last_yr_return:0.4983,av_yrly_return:2.4131,est_next_yr_return:1.4557,current_loss:-0.0742,stat3_loss:-0.1323,recovery_period:0.22},
+  {ticker:"INFQ",buy_sell_call:"Buy",call_strength:0.0313,last_yr_return:0.2794,av_yrly_return:3.2369,est_next_yr_return:1.7581,current_loss:-0.0950,stat3_loss:-0.1981,recovery_period:0.23},
+  {ticker:"VIA",buy_sell_call:"Buy",call_strength:0.2157,last_yr_return:0.7552,av_yrly_return:1.5731,est_next_yr_return:1.1641,current_loss:-0.0774,stat3_loss:-0.0800,recovery_period:0.26},
+  {ticker:"LBRX",buy_sell_call:"Buy",call_strength:0.1017,last_yr_return:1.1847,av_yrly_return:2.6847,est_next_yr_return:1.9347,current_loss:-0.0653,stat3_loss:-0.1969,recovery_period:0.30},
+  {ticker:"GENB",buy_sell_call:"Buy",call_strength:0.0139,last_yr_return:0.1128,av_yrly_return:1.1587,est_next_yr_return:0.6358,current_loss:-0.2448,stat3_loss:-0.3773,recovery_period:0.75},
+  {ticker:"NAVN",buy_sell_call:"Buy",call_strength:0.1318,last_yr_return:0.3076,av_yrly_return:0.7908,est_next_yr_return:0.5492,current_loss:-0.3375,stat3_loss:-0.1957,recovery_period:1.41},
 ];
 
 const PORTFOLIO = {
@@ -731,6 +738,7 @@ const COL_TIPS = {
   current_price:"Latest market price",
   market_value:"Current market value (price \u00D7 quantity)",
   port_weight:"Position weight as percentage of total portfolio",
+  signal_pct:"CHC model signal from the daily screener run: Buy/Sell call plus the signal percentile of the ticker's own 5-yr range (P0 = most bearish, P100 = most bullish). Dash when the screener does not cover the ticker",
   total_gain:"Unrealized gain/loss in dollars (current value minus cost basis)",
   total_gain_pct:"Unrealized gain/loss as percentage of cost basis",
   day_gain_pct:"Today\u2019s price change as percentage",
@@ -783,11 +791,29 @@ function SummaryTable({tickers,onSelect,sortCfg,onSort}) {
 }
 
 function TickerDetail({data,onBack}) {
+  const [chartRange, setChartRange] = useState("ALL");
   if(!data) return null;
   const {trading,buy_hold,chart,params}=data;
-  const cd = chart&&chart.dates ? chart.dates.map((d,i)=>({date:d,trading:chart.trading_balance[i],buyHold:chart.bh_balance[i]})) : [];
-  const signalData = chart&&chart.signal ? chart.dates.map((d,i)=>({date:d,signal:chart.signal[i]})) : [];
-  const ddData = chart&&chart.drawdown ? chart.dates.map((d,i)=>({date:d,trading:chart.drawdown[i],buyHold:chart.bh_drawdown[i]})) : [];
+  // Range toggle applies to the growth, signal, and drawdown charts
+  const RANGE_DAYS = {"3M":91,"6M":182,"1Y":365,"2Y":730,"ALL":null};
+  const rangeCutoff = (() => {
+    const days = RANGE_DAYS[chartRange];
+    if (!days) return null;
+    const end = chart&&chart.dates&&chart.dates.length>0 ? new Date(chart.dates[chart.dates.length-1]) : new Date();
+    end.setDate(end.getDate()-days);
+    return end.toISOString().slice(0,10);
+  })();
+  const inRange = d => rangeCutoff == null || d >= rangeCutoff;
+  const cd = chart&&chart.dates ? chart.dates.map((d,i)=>({date:d,trading:chart.trading_balance[i],buyHold:chart.bh_balance[i]})).filter(r=>inRange(r.date)) : [];
+  const signalData = chart&&chart.signal ? chart.dates.map((d,i)=>({date:d,signal:chart.signal[i]})).filter(r=>inRange(r.date)) : [];
+  const ddData = chart&&chart.drawdown ? chart.dates.map((d,i)=>({date:d,trading:chart.drawdown[i],buyHold:chart.bh_drawdown[i]})).filter(r=>inRange(r.date)) : [];
+  const rangeToggle = (
+    <span style={{display:"inline-flex",gap:4,marginLeft:"auto"}}>
+      {Object.keys(RANGE_DAYS).map(r => (
+        <button key={r} className={"filter-btn"+(chartRange===r?" active":"")} onClick={()=>setChartRange(r)} style={{padding:"3px 10px",fontSize:11,textTransform:"none",letterSpacing:0}}>{r}</button>
+      ))}
+    </span>
+  );
   const ts = data.tradeStats || {};
 
   const isBuy = data.buy_sell_call === "Buy";
@@ -858,7 +884,7 @@ function TickerDetail({data,onBack}) {
 
       {cd.length>0&&!data.summaryOnly&&(
         <div className="card">
-          <div className="card-title">Growth of $100,000 {"\u2014"} Trading vs Buy & Hold</div>
+          <div className="card-title" style={{display:"flex",alignItems:"center"}}>Growth of $100,000 {"\u2014"} Trading vs Buy & Hold{rangeToggle}</div>
           <Chart data={cd} width={Math.min(1340,window.innerWidth-80)} height={350} xKey="date"
             lines={[{key:"trading",label:"With Trading",color:"#22c55e",width:2},{key:"buyHold",label:"Buy & Hold",color:"#3b82f6",width:2,opacity:0.7}]}/>
         </div>
@@ -903,7 +929,7 @@ function TickerDetail({data,onBack}) {
       {/* Signal Chart */}
       {signalData.length > 0 && !data.summaryOnly && (
         <div className="card">
-          <div className="card-title">Combined Signal Over Time</div>
+          <div className="card-title" style={{display:"flex",alignItems:"center"}}>Combined Signal Over Time{rangeToggle}</div>
           <Chart data={signalData} height={250} xKey="date"
             lines={[{key:"signal",label:"Combined Signal",color:"#8b5cf6",width:1.5}]}
             yFormat={v => v.toFixed(3)}
@@ -919,7 +945,7 @@ function TickerDetail({data,onBack}) {
       {/* Drawdown Chart */}
       {ddData.length > 0 && !data.summaryOnly && (
         <div className="card">
-          <div className="card-title">Drawdown Over Time</div>
+          <div className="card-title" style={{display:"flex",alignItems:"center"}}>Drawdown Over Time{rangeToggle}</div>
           <Chart data={ddData} height={220} xKey="date"
             lines={[
               {key:"trading",label:"With Trading",color:"#22c55e",width:2},
@@ -1382,6 +1408,7 @@ function PilotPortfolio({screenerData, onSelect}) {
   const [chart, setChart] = useState(null);
   const [chartMsg, setChartMsg] = useState("Loading price history...");
   const [modelSignals, setModelSignals] = useState({});
+  const [pilotRange, setPilotRange] = useState("ALL");
 
   useEffect(() => {
     fetch("data/pilot_portfolio.json").then(r => r.json()).then(setConfig)
@@ -1539,9 +1566,23 @@ function PilotPortfolio({screenerData, onSelect}) {
       </div>
 
       <div className="card" style={{marginTop:16}}>
-        <div className="card-title">Growth Since Inception {"—"} Pilot vs {chart ? chart.bench : "SPY"}</div>
+        <div className="card-title" style={{display:"flex",alignItems:"center"}}>
+          Growth Since Inception {"—"} Pilot vs {chart ? chart.bench : "SPY"}
+          <span style={{display:"inline-flex",gap:4,marginLeft:"auto"}}>
+            {["1M","3M","6M","1Y","ALL"].map(r => (
+              <button key={r} className={"filter-btn"+(pilotRange===r?" active":"")} onClick={()=>setPilotRange(r)} style={{padding:"3px 10px",fontSize:11,textTransform:"none",letterSpacing:0}}>{r}</button>
+            ))}
+          </span>
+        </div>
         {chart ? (
-          <Chart data={chart.rows} height={320} xKey="date"
+          <Chart data={(() => {
+            const days = {"1M":30,"3M":91,"6M":182,"1Y":365,"ALL":null}[pilotRange];
+            if (!days || chart.rows.length === 0) return chart.rows;
+            const end = new Date(chart.rows[chart.rows.length-1].date);
+            end.setDate(end.getDate()-days);
+            const c = end.toISOString().slice(0,10);
+            return chart.rows.filter(r => r.date >= c);
+          })()} height={320} xKey="date"
             yFormat={v => "$" + (v/1000).toFixed(1) + "k"}
             hLines={[{value: chart.totalCost, label: "Cost basis", color: "var(--text2)"}]}
             lines={[
@@ -1756,7 +1797,7 @@ function MarketScreener({onSelect}) {
 
 // ── Schwab Account Tab ───────────────────────────────────────────────────────
 
-function SchwabAccount({onAnalyzeTicker}) {
+function SchwabAccount({onAnalyzeTicker, screenerData}) {
   const [schwabData, setSchwabData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [holdSort, setHoldSort] = useState({key:"market_value",dir:-1});
@@ -1911,7 +1952,9 @@ function SchwabAccount({onAnalyzeTicker}) {
     const annReturn = age != null && age >= 30 && h.total_gain_pct != null
       ? Math.pow(1 + h.total_gain_pct, 365.25 / age) - 1
       : null;
-    return {...h, port_weight: totalPortValue > 0 ? h.market_value / totalPortValue : 0, avg_hold_days: age, ann_return: annReturn};
+    const sr = screenerData && screenerData.results && screenerData.results.find(r => r.ticker === h.symbol);
+    return {...h, port_weight: totalPortValue > 0 ? h.market_value / totalPortValue : 0, avg_hold_days: age, ann_return: annReturn,
+      signal_call: sr ? sr.buy_sell_call : null, signal_pct: sr && sr.signal_percentile != null ? sr.signal_percentile : null};
   });
 
   // Aggregate P&L
@@ -2568,7 +2611,8 @@ function SchwabAccount({onAnalyzeTicker}) {
         <div className="card-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <span>Holdings<span style={{color:"var(--text2)",fontWeight:400,marginLeft:8,fontSize:12,textTransform:"none",letterSpacing:0}}>(click to run CHC model)</span></span>
           <button onClick={()=>exportCSV(sortedHoldings,[
-            {label:"Symbol",field:"symbol"},{label:"Sector",field:"sector"},{label:"Qty",field:"quantity"},
+            {label:"Symbol",field:"symbol"},{label:"Sector",field:"sector"},
+            {label:"Signal",field:"signal_call"},{label:"Signal Pctl",field:"signal_pct"},{label:"Qty",field:"quantity"},
             {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},{label:"Mkt Value",field:"market_value"},
             {label:"Weight %",field:"port_weight"},{label:"Total Gain",field:"total_gain"},
             {label:"Gain %",field:"total_gain_pct"},{label:"Ann Return",field:"ann_return"},
@@ -2580,6 +2624,7 @@ function SchwabAccount({onAnalyzeTicker}) {
             <thead><tr>
               {[
                 {label:"Symbol",field:"symbol"},{label:"Sector",field:"sector"},
+                {label:"Signal",field:"signal_pct"},
                 {label:"Qty",field:"quantity"},
                 {label:"Avg Cost",field:"avg_cost"},{label:"Price",field:"current_price"},
                 {label:"Mkt Value",field:"market_value"},{label:"% Port",field:"port_weight"},
@@ -2597,6 +2642,9 @@ function SchwabAccount({onAnalyzeTicker}) {
                 <tr key={h.symbol} onClick={()=>onAnalyzeTicker && onAnalyzeTicker(h.symbol)} style={{cursor:"pointer"}}>
                   <td className="tc">{h.symbol}</td>
                   <td style={{color:"var(--text2)",fontSize:11}}>{h.sector||"\u2014"}</td>
+                  <td>{h.signal_call
+                    ? <span><span className={"badge "+(h.signal_call==="Buy"?"badge-green":"badge-red")}>{h.signal_call}</span>{h.signal_pct!=null && <span style={{color:h.signal_call==="Buy"?"var(--green)":"var(--red)",fontSize:11,fontWeight:600,marginLeft:6}}>P{h.signal_pct}</span>}</span>
+                    : <span style={{color:"var(--text2)"}}>{"\u2014"}</span>}</td>
                   <td>{h.quantity.toLocaleString("en-US",{maximumFractionDigits:2})}</td>
                   <td>${h.avg_cost.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                   <td>${h.current_price.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
@@ -3364,7 +3412,7 @@ function App() {
             style={{background:"var(--bg3)",border:"1px solid var(--border)",color:"var(--text)",padding:"5px 10px",borderRadius:8,fontSize:14,cursor:"pointer",lineHeight:1}}>
             {theme==="dark"?"\u2600":"\u263D"}
           </button>
-          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.7.0</span>
+          <span className="badge badge-green">Trading Active</span><span className="badge badge-blue">v5.8.0</span>
         </div>
       </div>
 
@@ -3564,7 +3612,7 @@ function App() {
       )}
 
       {view==="dashboard"&&page==="account"&&(
-        <SchwabAccount onAnalyzeTicker={handleSelect}/>
+        <SchwabAccount onAnalyzeTicker={handleSelect} screenerData={screenerData}/>
       )}
 
       {view==="dashboard"&&page==="pilot"&&(
@@ -3812,6 +3860,12 @@ function App() {
         <div className="card" style={{padding:"20px 24px",maxWidth:900}}>
           <div className="card-title" style={{marginBottom:16}}>Changelog</div>
           {[
+            {ver:"v5.8.0",date:"2026-09-11",items:[
+              "Holdings table: Signal column with the CHC Buy/Sell call and signal percentile from the daily screener run, sortable and included in the CSV export",
+              "Pilot tickers promoted to the normal asset set: ANDG, INFQ, LBRX, NAVN, GENB, VIA added to Select Assets, ticker_params.json (default params, ready to Optimize), and tickers.json OHLCV data",
+              "Analysis charts: time period toggle (3M/6M/1Y/2Y/ALL) on the growth, signal, and drawdown charts",
+              "Pilot Portfolio chart: time period toggle (1M/3M/6M/1Y/ALL)",
+            ]},
             {ver:"v5.7.0",date:"2026-09-10",items:[
               "New Pilot Portfolio tab tracking the six-asset Portfolio Builder basket funded 2026-09-04 (ANDG, INFQ, LBRX, NAVN, GENB, VIA)",
               "Summary cards: market value, total P&L, today's P&L, performance vs SPY over the same period, and a Buy/Sell signal count across the basket",

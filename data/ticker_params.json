@@ -47,6 +47,14 @@
     "vol_flag": 3,
     "vol_price_mix": 0.8
   },
+  "ANDG": {
+    "buy_threshold": 0.0012,
+    "price_flag": 1,
+    "sell_threshold": -0.0012,
+    "vol_flag": 2,
+    "vol_price_mix": 0.72,
+    "vol_up_down_param": 0
+  },
   "ANET": {
     "buy_threshold": 0,
     "last_optimized": "2026-04-02T22:10:14.519Z",
@@ -103,6 +111,14 @@
     "vol_price_mix": 0.82,
     "vol_up_down_param": 1
   },
+  "GENB": {
+    "buy_threshold": 0.0012,
+    "price_flag": 1,
+    "sell_threshold": -0.0012,
+    "vol_flag": 2,
+    "vol_price_mix": 0.72,
+    "vol_up_down_param": 0
+  },
   "GLDM": {
     "buy_threshold": -0.007,
     "last_optimized": "2026-04-02T22:09:56.789Z",
@@ -135,6 +151,14 @@
     "vol_flag": 2,
     "vol_price_mix": 0.18
   },
+  "INFQ": {
+    "buy_threshold": 0.0012,
+    "price_flag": 1,
+    "sell_threshold": -0.0012,
+    "vol_flag": 2,
+    "vol_price_mix": 0.72,
+    "vol_up_down_param": 0
+  },
   "IWF": {
     "buy_threshold": -0.02,
     "last_optimized": "2026-04-03T17:17:10.710Z",
@@ -150,6 +174,14 @@
     },
     "vol_flag": 2,
     "vol_price_mix": 0.4
+  },
+  "LBRX": {
+    "buy_threshold": 0.0012,
+    "price_flag": 1,
+    "sell_threshold": -0.0012,
+    "vol_flag": 2,
+    "vol_price_mix": 0.72,
+    "vol_up_down_param": 0
   },
   "LLY": {
     "buy_threshold": -0.03,
@@ -198,6 +230,14 @@
     },
     "vol_flag": 1,
     "vol_price_mix": 0.4
+  },
+  "NAVN": {
+    "buy_threshold": 0.0012,
+    "price_flag": 1,
+    "sell_threshold": -0.0012,
+    "vol_flag": 2,
+    "vol_price_mix": 0.72,
+    "vol_up_down_param": 0
   },
   "NRG": {
     "buy_threshold": 0,
@@ -422,6 +462,14 @@
     },
     "vol_flag": 2,
     "vol_price_mix": 0.2
+  },
+  "VIA": {
+    "buy_threshold": 0.0012,
+    "price_flag": 1,
+    "sell_threshold": -0.0012,
+    "vol_flag": 2,
+    "vol_price_mix": 0.72,
+    "vol_up_down_param": 0
   },
   "XLE": {
     "buy_threshold": -0.09,
