@@ -56,7 +56,14 @@ Combined Signal = (volPriceMix × Volume Ratio) + ((1 - volPriceMix) × Price Sl
 
 ## Current State — What Needs Doing Next
 
-### Priority 0: Action items from 2026-08-28 team meeting
+### Priority 0: Action items from 2026-09-11 team meeting
+Full notes in `docs/meetings/2026-09-11-team-meeting.md`. Dashboard work agreed with Dan:
+1. **Buy/Sell signal column on the Performance tab Holdings table** — source from the daily screener (like the Pilot Portfolio tab), in-browser computed fallback for uncovered tickers.
+2. **Add pilot tickers to the normal asset set** — ANDG, INFQ, LBRX, NAVN, GENB, VIA into Select Assets / `ticker_params.json` / `tickers.json` (see `add_ticker.py`) for daily signal coverage and optimizable params.
+3. **Time period toggle on Analysis charts** — range selector (3M/6M/1Y/ALL) for the growth/signal/drawdown charts; same for the Pilot tab chart.
+4. **Python Excel data feed (contingent)** — if Microsoft's STOCKHISTORY outage (down since 9/4, confirmed service-side) persists past the weekend, write Date/Close/Volume per ticker from Yahoo into the Dropbox location Dan's `Stock_Analyzer` workbooks read.
+
+### Prior action items from 2026-08-28 team meeting
 Full notes in `docs/meetings/2026-08-28-team-meeting.md`. Dashboard work agreed with Dan:
 1. **Realized vs. unrealized gains/losses tracking** — calendar YTD view, split long-term vs. short-term, for tax-aware rebalancing decisions. Underlying data exists in the Schwab/portfolio data. Start with a one-off analysis of the current tax position, then formalize as a recurring dashboard visualization.
 2. **Trial portfolio tagging — DONE (v5.7.0, 2026-09-10).** Implemented as the Pilot Portfolio tab with the basket pinned in `data/pilot_portfolio.json` (the team funded six picks on 2026-09-04 instead of the originally discussed BTSG set; see `docs/meetings/2026-09-04-team-meeting.md`). Edit that JSON when the basket changes. Possible follow-up: support multiple named baskets.
