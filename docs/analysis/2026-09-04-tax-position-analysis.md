@@ -82,3 +82,7 @@ The ST bucket is already positive even after harvesting FIX, so every dollar of 
 - If FIX is harvested, do not repurchase FIX within 30 days or the loss is disallowed (same trap as GOOG/LLY in February).
 - Eric's 2025 1040 is a DRAFT (7/16/26); the ~$105 carryover could change when filed.
 - This is analysis, not tax advice; confirm with Chris Moore before trading on it.
+
+## Correction (2026-09-16)
+
+The member split quoted above (70.1/25.9/2/2) is the 2025 K-1 allocation and is obsolete for 2026 gains realized after 2/26/26. Amendment 5 (signed 2026-02-26) recapitalized the LLC: Eric 36.48%, Emily 14.52%, Dan 49.00% (Jerome exited Oct 2025 via Amendment 4). Use the new split for current-year allocation; 2026 is a split-allocation year at the 2/26 boundary.
