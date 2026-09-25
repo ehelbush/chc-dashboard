@@ -10,7 +10,7 @@ Usage:
 Takes 1-3 hours depending on internet speed. Progress is saved continuously,
 so you can stop and restart — it will skip tickers already fetched today.
 """
-import sys, os, json, time, math
+import sys, os, json, time, math, re
 from datetime import datetime, timedelta
 
 # Use the venv from chc-dashboard if available
@@ -380,7 +380,8 @@ def main():
     def note_error(sym, msg):
         nonlocal errors
         errors += 1
-        key = (msg or "unknown").split(':')[0].strip()[:60]
+        # Collapse variable detail like "(21 rows)" so each error TYPE prints once
+        key = re.sub(r"\(.*?\)", "", msg or "unknown").split(':')[0].strip()[:60]
         if key not in error_types:
             error_types[key] = 0
             print(f"  ! {sym}: {msg[:200]}")
