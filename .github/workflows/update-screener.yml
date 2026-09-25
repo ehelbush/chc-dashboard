@@ -57,6 +57,8 @@ jobs:
       - name: Run market screener
         id: screener
         continue-on-error: true   # still commit Schwab data; the gate below fails the run
+        env:
+          PYTHONUNBUFFERED: "1"   # show progress/backoff lines live instead of in 8 KB chunks
         run: python fetch_all_tickers.py
 
       - name: Flag screener failure

@@ -442,6 +442,9 @@ def main():
 
         except Exception as e:
             note_error(sym, f"{type(e).__name__}: {e}")
+            if "RateLimit" in type(e).__name__ or "Too Many Requests" in str(e):
+                # Explicit 429 from Yahoo: don't wait for the streak to build
+                consecutive_failures = FAILURE_STREAK - 1
 
         # ── Throttle detection / backoff ──
         if ok:
