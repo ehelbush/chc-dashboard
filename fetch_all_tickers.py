@@ -290,21 +290,62 @@ def get_all_tickers():
 
 # ── Main ─────────────────────────────────────────────────────────────────
 
-def main():
-    output_path = os.path.join(os.path.dirname(__file__), 'data', 'market_screener.json')
+# Coverage floor: a run that scores fewer tickers than this is treated as a
+# failed run (Yahoo throttling, ticker-list outage, ...). The previous good
+# market_screener.json is left untouched and the script exits non-zero.
+MIN_TICKERS = int(os.environ.get("SCREENER_MIN_TICKERS", "4000"))
 
-    # Load existing results (for resume capability)
-    existing = {}
+# Throttle detection: this many consecutive failures triggers a backoff.
+# Delisted / thin tickers fail ~10% of the time at random, so a streak this
+# long is essentially never organic.
+FAILURE_STREAK = 8
+MAX_BACKOFF_ROUNDS = 6      # 60s, 120s, 240s, 480s, 600s, 600s  (~35 min total)
+BACKOFF_CAP_SECONDS = 600
+
+
+def yahoo_reachable():
+    """Probe Yahoo with a ticker that always has data."""
+    try:
+        h = yf.Ticker("SPY").history(period="5d")
+        return not h.empty
+    except Exception:
+        return False
+
+
+def main():
+    data_dir = os.path.join(os.path.dirname(__file__), 'data')
+    output_path = os.path.join(data_dir, 'market_screener.json')
+    # Progress is written here during the run; it only replaces output_path
+    # once the run finishes AND clears the coverage floor.
+    partial_path = os.path.join(data_dir, 'market_screener.partial.json')
+
     today = datetime.now().strftime('%Y-%m-%d')
+
+    # Previous good run (for the coverage comparison at the end)
+    previous_count = 0
     if os.path.exists(output_path):
-        with open(output_path) as f:
-            data = json.load(f)
+        try:
+            with open(output_path) as f:
+                prev = json.load(f)
+            previous_count = len(prev.get("results", []))
+            print(f"Previous screener: {prev.get('date')} with {previous_count} tickers")
+        except Exception as e:
+            print(f"Could not read previous screener: {e}")
+
+    # Load today's partial results (for resume capability)
+    existing = {}
+    if os.path.exists(partial_path):
+        try:
+            with open(partial_path) as f:
+                data = json.load(f)
             if data.get("date") == today:
                 existing = {r["ticker"]: r for r in data.get("results", [])}
                 print(f"Resuming — {len(existing)} tickers already done today")
+        except Exception as e:
+            print(f"Ignoring unreadable partial file: {e}")
 
     # Load per-asset params for portfolio tickers
-    params_path = os.path.join(os.path.dirname(__file__), 'data', 'ticker_params.json')
+    params_path = os.path.join(data_dir, 'ticker_params.json')
     ticker_params = {}
     if os.path.exists(params_path):
         with open(params_path) as f:
@@ -320,7 +361,6 @@ def main():
     if existing and len(all_tickers) < len(existing) * 0.5:
         print(f"  WARNING: ticker list ({len(all_tickers)}) is much smaller than existing data ({len(existing)})")
         print(f"  Keeping existing tickers and adding any new ones from today's list")
-        # Merge: keep all existing, only fetch new ones from today's list
         all_tickers = sorted(set(all_tickers) | set(existing.keys()))
         print(f"  Merged ticker count: {len(all_tickers)}")
 
@@ -330,56 +370,110 @@ def main():
 
     results = list(existing.values())
     errors = 0
+    error_types = {}            # error signature -> count (first one is printed)
+    consecutive_failures = 0
+    backoff_rounds = 0
+    aborted = False
     batch_size = 50
     start_time = time.time()
 
-    for idx, sym in enumerate(to_fetch):
+    def note_error(sym, msg):
+        nonlocal errors
+        errors += 1
+        key = (msg or "unknown").split(':')[0].strip()[:60]
+        if key not in error_types:
+            error_types[key] = 0
+            print(f"  ! {sym}: {msg[:200]}")
+        error_types[key] += 1
+
+    def save(path):
+        output = {
+            "date": today,
+            "generated": datetime.now().isoformat(),
+            "total_tickers": len(results),
+            "results": sorted(results, key=lambda r: r.get("recovery_period", 999)),
+        }
+        with open(path, 'w') as f:
+            json.dump(output, f, separators=(',', ':'))
+
+    i = 0
+    while i < len(to_fetch):
+        sym = to_fetch[i]
+        ok = False
         try:
             tk = yf.Ticker(sym)
             hist = tk.history(period="6y")
 
             if hist.empty or len(hist) < 130:
-                errors += 1
-                continue
+                note_error(sym, f"no/insufficient history ({len(hist)} rows)")
+            else:
+                dates = [d.strftime('%Y-%m-%d') for d in hist.index]
+                closes = hist['Close'].tolist()
+                volumes = hist['Volume'].astype(int).tolist()
 
-            dates = [d.strftime('%Y-%m-%d') for d in hist.index]
-            closes = hist['Close'].tolist()
-            volumes = hist['Volume'].astype(int).tolist()
-
-            # Use saved per-asset params for portfolio tickers, defaults for others
-            tp = ticker_params.get(sym, {})
-            result = compute_chc_model(dates, closes, volumes,
-                vol_flag=tp.get("vol_flag", 2),
-                price_flag=tp.get("price_flag", 1),
-                vol_price_mix=tp.get("vol_price_mix", 0.72),
-                buy_threshold=tp.get("buy_threshold", 0.0012),
-                sell_threshold=tp.get("sell_threshold", -0.0012),
-                vol_up_down_param=tp.get("vol_up_down_param", 0),
-            )
-            if result is None:
-                errors += 1
-                continue
-
-            result["ticker"] = sym
-            try:
-                result["market_cap"] = tk.fast_info.market_cap
-            except Exception:
-                result["market_cap"] = None
-            try:
-                info = tk.info
-                result["sector"] = info.get("sector", "")
-                result["industry"] = info.get("industry", "")
-            except Exception:
-                result["sector"] = ""
-                result["industry"] = ""
-            results.append(result)
+                # Use saved per-asset params for portfolio tickers, defaults for others
+                tp = ticker_params.get(sym, {})
+                result = compute_chc_model(dates, closes, volumes,
+                    vol_flag=tp.get("vol_flag", 2),
+                    price_flag=tp.get("price_flag", 1),
+                    vol_price_mix=tp.get("vol_price_mix", 0.72),
+                    buy_threshold=tp.get("buy_threshold", 0.0012),
+                    sell_threshold=tp.get("sell_threshold", -0.0012),
+                    vol_up_down_param=tp.get("vol_up_down_param", 0),
+                )
+                if result is None:
+                    note_error(sym, "model returned None")
+                else:
+                    result["ticker"] = sym
+                    try:
+                        result["market_cap"] = tk.fast_info.market_cap
+                    except Exception:
+                        result["market_cap"] = None
+                    try:
+                        info = tk.info
+                        result["sector"] = info.get("sector", "")
+                        result["industry"] = info.get("industry", "")
+                    except Exception:
+                        result["sector"] = ""
+                        result["industry"] = ""
+                    results.append(result)
+                    ok = True
 
         except Exception as e:
-            errors += 1
-            continue
+            note_error(sym, f"{type(e).__name__}: {e}")
+
+        # ── Throttle detection / backoff ──
+        if ok:
+            consecutive_failures = 0
+        else:
+            consecutive_failures += 1
+            if consecutive_failures >= FAILURE_STREAK:
+                streak = consecutive_failures
+                print(f"\n  {streak} consecutive failures ending at {sym} — Yahoo is probably throttling us.")
+                recovered = False
+                while backoff_rounds < MAX_BACKOFF_ROUNDS:
+                    backoff_rounds += 1
+                    wait = min(60 * 2 ** (backoff_rounds - 1), BACKOFF_CAP_SECONDS)
+                    print(f"  Backing off {wait}s (round {backoff_rounds}/{MAX_BACKOFF_ROUNDS})...")
+                    time.sleep(wait)
+                    if yahoo_reachable():
+                        print("  Yahoo responding again; re-queuing the failed streak.\n")
+                        recovered = True
+                        break
+                    print("  Still throttled.")
+                if not recovered:
+                    print(f"  Giving up after {backoff_rounds} backoff rounds; keeping partial results.")
+                    aborted = True
+                    break
+                # Rewind so the tickers that failed during the throttle get retried
+                i -= (streak - 1)
+                errors -= streak
+                consecutive_failures = 0
+                continue
 
         # Progress update
-        done = idx + 1
+        i += 1
+        done = i
         if done % 10 == 0 or done == len(to_fetch):
             elapsed = time.time() - start_time
             rate = done / elapsed if elapsed > 0 else 0
@@ -390,31 +484,30 @@ def main():
 
         # Save progress every batch_size tickers
         if done % batch_size == 0 or done == len(to_fetch):
-            output = {
-                "date": today,
-                "generated": datetime.now().isoformat(),
-                "total_tickers": len(results),
-                "results": sorted(results, key=lambda r: r.get("recovery_period", 999)),
-            }
-            with open(output_path, 'w') as f:
-                json.dump(output, f, separators=(',', ':'))
+            save(partial_path)
 
         # Small delay to avoid rate limiting
         time.sleep(0.2)
 
-    # Final save
-    output = {
-        "date": today,
-        "generated": datetime.now().isoformat(),
-        "total_tickers": len(results),
-        "results": sorted(results, key=lambda r: r.get("recovery_period", 999)),
-    }
-    with open(output_path, 'w') as f:
-        json.dump(output, f, separators=(',', ':'))
+    # Final save of the partial file
+    save(partial_path)
 
     elapsed = time.time() - start_time
     print(f"\nDone! {len(results)} tickers processed in {elapsed/60:.1f} minutes")
     print(f"Errors/skipped: {errors}")
+    if error_types:
+        print("Error breakdown (including failures later retried after a backoff):")
+        for key, n in sorted(error_types.items(), key=lambda kv: -kv[1]):
+            print(f"  {n:5d}  {key}")
+
+    # ── Coverage floor ──
+    if aborted or len(results) < MIN_TICKERS:
+        reason = "run aborted after repeated throttling" if aborted else f"only {len(results)} tickers scored (floor {MIN_TICKERS}, previous run {previous_count})"
+        print(f"\n::error title=Screener coverage too low::{reason}. "
+              f"Keeping the previous market_screener.json; partial results left in {os.path.basename(partial_path)}")
+        sys.exit(2)
+
+    os.replace(partial_path, output_path)
     print(f"Output: {output_path} ({os.path.getsize(output_path)/1024:.0f} KB)")
     print(f"\nPush to GitHub:")
     print(f"  git add data/market_screener.json")

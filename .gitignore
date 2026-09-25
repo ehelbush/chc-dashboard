@@ -12,3 +12,6 @@ venv/
 node_modules/
 logs/
 *.bak
+
+# Screener in-progress file (promoted to market_screener.json only when the run clears the coverage floor)
+data/market_screener.partial.json

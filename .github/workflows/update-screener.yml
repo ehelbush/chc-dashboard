@@ -9,7 +9,7 @@ on:
 jobs:
   update-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 200   # full run is ~90 min; leaves room for throttle backoff
 
     steps:
       - name: Checkout repo
@@ -55,7 +55,13 @@ jobs:
 
       # ── Market Screener (ticker model scores) ──
       - name: Run market screener
+        id: screener
+        continue-on-error: true   # still commit Schwab data; the gate below fails the run
         run: python fetch_all_tickers.py
+
+      - name: Flag screener failure
+        if: steps.screener.outcome == 'failure'
+        run: echo "::warning title=Market screener failed::Coverage floor not met or Yahoo throttled the run. Previous market_screener.json kept; see the screener step log for the error breakdown."
 
       # ── Commit results ──
       - name: Check for changes
@@ -76,8 +82,14 @@ jobs:
           git commit -m "Daily data sync $(date +%Y-%m-%d)"
           git push
 
-      # ── Staleness gate: fail the run (loudly) if account data is too old ──
-      # Runs last so the screener commit above always lands first.
+      # ── Gates: fail the run (loudly) if the screener failed or account data is too old ──
+      # Run last so the data commit above always lands first.
+      - name: Screener gate
+        if: always() && steps.screener.outcome == 'failure'
+        run: |
+          echo "::error title=Market screener failed::Screener did not clear the coverage floor (SCREENER_MIN_TICKERS, default 4000). Previous data kept."
+          exit 1
+
       - name: Schwab data staleness gate
         if: always()
         run: |
