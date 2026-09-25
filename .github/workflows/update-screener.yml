@@ -82,6 +82,9 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/
           git commit -m "Daily data sync $(date +%Y-%m-%d)"
+          # A code push to main during the ~2h run would make a plain push
+          # fail (non-fast-forward). Rebase onto it, keeping our data files.
+          git pull --rebase -X theirs origin main
           git push
 
       # ── Gates: fail the run (loudly) if the screener failed or account data is too old ──

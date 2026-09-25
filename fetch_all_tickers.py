@@ -299,7 +299,7 @@ MIN_TICKERS = int(os.environ.get("SCREENER_MIN_TICKERS", "4000"))
 # Delisted / thin tickers fail ~10% of the time at random, so a streak this
 # long is essentially never organic.
 FAILURE_STREAK = 8
-MAX_BACKOFF_ROUNDS = 6      # 60s, 120s, 240s, 480s, 600s, 600s  (~35 min total)
+MAX_BACKOFF_ROUNDS = 6      # 60s, 120s, 240s, 480s, 600s, 600s  (~35 min) per throttle episode
 BACKOFF_CAP_SECONDS = 600
 
 
@@ -463,6 +463,7 @@ def main():
                     if yahoo_reachable():
                         print("  Yahoo responding again; re-queuing the failed streak.\n")
                         recovered = True
+                        backoff_rounds = 0   # the cap applies per episode, not per run
                         break
                     print("  Still throttled.")
                 if not recovered:
